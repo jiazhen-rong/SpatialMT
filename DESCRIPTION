@@ -1,0 +1,13 @@
+Package: SpatialMT
+Title: Statistical test for ST data with Enriched Mitochondria
+Version: 0.5
+Authors@R: 
+    person("Jiazhen/JoJo", "Rong", , "Rong@Pennmedicine.upenn.edu", role = c("aut", "cre"),
+           comment = c(ORCID = 0000-0002-7884-5973))
+Description: This package aims to build statistical test for detecting mitochondrial variants in spatial transcriptomics data with enriched mitochondrial mutations.
+License: Apache License (>= 2)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Imports: 
+    Matrix

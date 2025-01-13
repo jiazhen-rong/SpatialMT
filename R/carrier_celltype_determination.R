@@ -1,0 +1,113 @@
+#' Regression Test for Identifying Significant Mutations and Carrier Celltypes.
+#'
+#' `celltype_test()` implements the statistical tests for identifying significant celltypes given spatial decomposition and varaint information.
+#'
+#' @param celltypes A string vector containing all unique celltypes.
+#' @param voi A string vector containing names of variant of interest. Usually a subset of variants that went through basic filtering.
+#' @param N A MT variant x cell total coverage matrix.
+#' @param X A MT variant x cell alternative allele count matrix. Optional if vaf matrix is provided.
+#' @param vaf A MT variant x cell variant allele frequnecy (VAF) matrix. Equivalent as af.dm matrix.
+#' @param Ws A cell x celltype weight matrix. Representing spatial decomposition results from tools like RCTD.
+#' @param spatial_coords A cell x spatial coordinates matrix. Representing the actual spot/cell location in space.
+#' @param test_type Type of Celltype test. Options from c("linear","weighted").
+#' @param permute_num A numeric number representing permuation number for each variant.
+#'
+#' @param ... Other options used to control matching behavior between duplicate
+#'   strings. Passed on to [stringi::stri_opts_collator()].
+#' @returns A list object containing fitted parameters (intercept, coefficient and p-values).
+#' @import Matrix
+#'
+#' @examples
+#' celltype_test(celltypes=c("BE","DYSP","Normal"), voi=voi_list,
+#' N=N,vaf=af.dm, test_type="linear",permute_num=1000)
+#'
+#' @export
+#'
+celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL,spatial_coords=NULL,
+                          test_type=c("linear","weighted"),permute_num=1000){
+  # check for input and conditions
+  if(test_type == "linear"){
+    message("Performing Linear Rgression ...")
+  }else if(test_type == "weighted"){
+    message("Performing Linear Rgression weighted by coverage...")
+  }else{
+    error("Not a valid test. Please choose from documented tests.")
+  }
+
+  if(is.null(vaf)){
+    if(!is.null(N)){
+      vaf_j = X[j,]/N[j,]
+    }else{
+      error("Missing alternative allelle count matrix N or frequency matrix vaf.")
+    }
+  }
+  # check if celltypes aligned with weight matrix
+  if(is.null(celltypes)){
+    message("Missing celltypes...Set as the column names of celltype weight matrix Ws.")
+    celltypes = colnames(Ws)
+  }else if(celltypes != colnames(Ws)){
+    error("Celltypes and the column names of celltype weight matrix Ws not matched...Please check the variables celltypes or Ws.")
+  }
+
+  # create plotting data frame
+  plot_df = cbind(spatial_coords[rownames(Ws),],Ws)
+  plot_df = cbind(plot_df[colnames(vaf),],as.data.frame(t(vaf)))
+
+  # for each variant j, fit a Xs/Ns vs Ws Linear regression
+  intercept_df = Matrix(NA,nrow=length(voi),ncol=length(celltypes))
+  coef_df = Matrix(NA,nrow=length(voi),ncol=length(celltypes))
+  pval_df=Matrix(NA,nrow=length(voi),ncol=length(celltypes))
+
+  pdf(paste0(test_type,"_regression_anova_p_VAF_vs_celltype_plot.pdf"),height=10,width=10)
+  for(j in 1:length(voi)){
+    var = voi[j]
+    print(paste0(j,": ", var))
+    N_j = N[j,]
+    vaf_j = vaf[j,]
+
+
+    for(k in 1:length(celltypes)){ # for each celltype
+
+      data = data.frame(vaf_j=vaf_j,N_j,W_sk=Ws[,k])
+      cell_ratio_bins = seq(from=0,to=1,by=0.05)
+
+      if(test_type == "linear"){
+        fit=lm(vaf_j ~ W_sk,data=data)# weights equals to inverse of variance (1/sigma_i^2)
+      }else if(test_type == "weighted"){
+        fit=lm(vaf_j ~ W_sk,data=data, weights=sqrt(N_j))# weights equals to inverse of variance (1/sigma_i^2)
+      }
+      res=summary(fit)
+      intercept_df[j,k]=res$coefficients[1,1]
+      coef_df[j,k]= res$coefficients[2,1]
+
+      if(test_type == "linear"){
+        pval_df[j,k] = res$coefficients[2,4]
+      }else if(test_type == "weighted"){
+        # doing permutations and see where the data locates
+        set.seed(42)
+        coef_list <- c()
+        #  decouple VAF with Ws
+        for(l in 1:permute_num){
+          idx=sample(1:length(vaf_j),size=length(vaf_j))
+          vaf_shuffled = vaf_j[idx]
+          #vaf_shuffled = pmin(X_shuffled/(N_j+1e-6),1) # cap max VAF to be by 1
+          fit=lm(vaf_shuffled ~ Ws[,k],weights=sqrt(N_j[idx]))# weights equals to inverse of variance (1/sigma_i^2)
+          res_shuf=summary(fit)
+          coef_list <- append(coef_list,res_shuf$coefficients[2,1])
+        }
+        pval_df[j,k] = 1- sum(res$coefficients[2,1] >= coef_list)/length(coef_list)
+      }
+    }
+
+    # for variant j, plot out the fitted values on the diagnostic plots
+    intercept=intercept_df[j,]
+    coef=coef_df[j,]
+    pval=pval_df[j,]
+    plot_vaf_cellprop(j,af.dm,Ws,plot_df,intercept,coef,pval)
+  }
+  dev.off()
+
+  return(res=list(intercept=intercept_df,coef=coef_df,pval=pval_df))
+}
+
+

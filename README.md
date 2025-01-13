@@ -2,7 +2,7 @@
 
 This GitHub contains the beta version of the Spatial Mitochondrial Variant Test (SpatialMT) package.
 
-For Single-cell enriched mitochondrial variant related test and filtering, please view our previous package \href{**scmtVT**}{\url{https://github.com/jiazhen-rong/scmtVT}}.
+For Single-cell enriched mitochondrial variant related test and filtering, please view our previous package [scmtVT](https://github.com/jiazhen-rong/scmtVT).
 
 
 ### Installation
@@ -22,7 +22,7 @@ git clone https://github.com/jiazhen-rong/spatialMT.git
 
 An example of how to run the  test is shown below:
 
-- [Tutorial for ST data with enriched mitochondrial mutations on a Barrett's esophagus sample]()
+- [Tutorial for ST data with enriched mitochondrial mutations on a Barrett's esophagus sample](TBD)
 
 ### Citations
 If you used the package in your research, please cite:
