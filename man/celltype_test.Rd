@@ -13,7 +13,8 @@ celltype_test(
   Ws = NULL,
   spatial_coords = NULL,
   test_type = c("linear", "weighted"),
-  permute_num = 1000
+  permute_num = 1000,
+  plot = F
 )
 }
 \arguments{

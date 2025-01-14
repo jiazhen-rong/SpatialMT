@@ -24,7 +24,7 @@
 #' @export
 #'
 celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL,spatial_coords=NULL,
-                          test_type=c("linear","weighted"),permute_num=1000){
+                          test_type=c("linear","weighted"),permute_num=1000,plot=F){
   # check for input and conditions
   if(test_type == "linear"){
     message("Performing Linear Rgression ...")
@@ -45,20 +45,29 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
   if(is.null(celltypes)){
     message("Missing celltypes...Set as the column names of celltype weight matrix Ws.")
     celltypes = colnames(Ws)
-  }else if(celltypes != colnames(Ws)){
+  }else if(any(celltypes != colnames(Ws))){
     error("Celltypes and the column names of celltype weight matrix Ws not matched...Please check the variables celltypes or Ws.")
   }
 
   # create plotting data frame
-  plot_df = cbind(spatial_coords[rownames(Ws),],Ws)
-  plot_df = cbind(plot_df[colnames(vaf),],as.data.frame(t(vaf)))
+  if(plot==T){
+    intersect_bc=intersect(intersect(colnames(N),rownames(Ws)),rownames(spatial_coords))
+    plot_df=cbind(spatial_coords[intersect_bc,],
+                  Ws[intersect_bc,],
+                  as.data.frame(t(vaf[,intersect_bc])))
+    # add in coverage of variant of interest
+    cov = N[,intersect_bc];rownames(cov) =  paste0(rownames(N),"_cov")
+    plot_df = cbind(plot_df,t(cov))
+  }
 
   # for each variant j, fit a Xs/Ns vs Ws Linear regression
   intercept_df = Matrix(NA,nrow=length(voi),ncol=length(celltypes))
   coef_df = Matrix(NA,nrow=length(voi),ncol=length(celltypes))
   pval_df=Matrix(NA,nrow=length(voi),ncol=length(celltypes))
 
-  pdf(paste0(test_type,"_regression_anova_p_VAF_vs_celltype_plot.pdf"),height=10,width=10)
+  if(plot==T){
+    pdf(paste0(test_type,"_regression_anova_p_VAF_vs_celltype_plot.pdf"),height=10,width=10)
+  }
   for(j in 1:length(voi)){
     var = voi[j]
     print(paste0(j,": ", var))
@@ -98,16 +107,67 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
         pval_df[j,k] = 1- sum(res$coefficients[2,1] >= coef_list)/length(coef_list)
       }
     }
-
     # for variant j, plot out the fitted values on the diagnostic plots
-    intercept=intercept_df[j,]
-    coef=coef_df[j,]
-    pval=pval_df[j,]
-    plot_vaf_cellprop(j,af.dm,Ws,plot_df,intercept,coef,pval)
+    if(plot==T){
+      intercept=intercept_df[j,]
+      coef=coef_df[j,]
+      pval=pval_df[j,]
+      plot_vaf_cellprop(j,af.dm,Ws,plot_df,intercept,coef,pval)
+    }
   }
-  dev.off()
+  if(plot==T){
+    dev.off()
+    message("Diagnostic plots generated.")
+  }
 
   return(res=list(intercept=intercept_df,coef=coef_df,pval=pval_df))
 }
 
 
+#' Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
+#'
+calc_power <- function(beta,Nj,Wj,vaf_j,alpha,n_sim){
+  rejections = 0
+  p_vals = c()
+  for(i in 1:n_sim){
+    #if(i%%(n_sim/3)){
+    #  print(paste0("sim:",i))
+    #}
+    X_sim = rbinom(n=length(Nj),size=Nj,prob=beta*Wj)
+    data = data.frame(vaf_j=X_sim/(Nj+0.001),Nj,Wj=Wj)
+    fit=lm(vaf_j ~ Wj,data=data)# weights equals to inverse of variance (1/sigma_i^2)
+    res=summary(fit)
+    p_vals = append(p_vals,res$coefficients[2,4])
+  }
+  rejections  = rejections + sum(p_vals < alpha)
+  power = rejections/(n_sim)
+  return(power)
+}
+
+#' Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
+#' in one variant & one celltype
+for(j in 1:length(voi)){
+  print(j)
+  var = voi[j];print(var)
+  for(k in 1:length(celltypes)){
+    celltype = celltypes[k]
+    Nj = sample(c(0,1),1000)#N[j,intersect_bc] # coverage
+    Wj = Ws[intersect_bc,celltype] # celltype ratio
+    beta_grid <- seq(0.1,1,by=0.1)
+    alpha = 0.05
+    n_sim = 1000
+
+    power_results = sapply(beta_grid,function(beta){
+      print(beta)
+      calc_power(beta,Nj,Wj,vaf_j,alpha,n_sim)
+    })
+    names(power_results) = beta_grid
+    plot(beta_grid,power_results,type="l",col="blue",lwd=2,
+         xlab="Beta",ylab="Power",main=paste0(var,", ",celltype),
+         ylim=c(0,1),xlim=c(0,1)
+    )
+    points(c(0.1,0.5,1),power_results[as.character(c(0.1,0.5,1))],pch=16)
+    abline(h=0.8,col="orange",lty=2)
+  }
+
+}
