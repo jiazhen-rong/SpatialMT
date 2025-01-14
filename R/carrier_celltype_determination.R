@@ -126,48 +126,72 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
 
 #' Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
 #'
-calc_power <- function(beta,Nj,Wj,vaf_j,alpha,n_sim){
+calc_power <- function(beta,Nj,Wj,vaf_j,alpha,n_sim,verbose=T,report_frac=3){
   rejections = 0
   p_vals = c()
   for(i in 1:n_sim){
-    #if(i%%(n_sim/3)){
-    #  print(paste0("sim:",i))
-    #}
+    if(verbose){
+      if(i%%(round(n_sim/report_frac))){
+       print(paste0("sim:",i,"/",n_sim))
+      }
+    }
     X_sim = rbinom(n=length(Nj),size=Nj,prob=beta*Wj)
     data = data.frame(vaf_j=X_sim/(Nj+0.001),Nj,Wj=Wj)
-    fit=lm(vaf_j ~ Wj,data=data)# weights equals to inverse of variance (1/sigma_i^2)
+    fit=lm(vaf_j ~ Wj,data=data)
     res=summary(fit)
     p_vals = append(p_vals,res$coefficients[2,4])
   }
-  rejections  = rejections + sum(p_vals < alpha)
+  rejections  = sum(p_vals <= alpha,na.rm=T)
   power = rejections/(n_sim)
   return(power)
 }
 
 #' Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
-#' in one variant & one celltype
-for(j in 1:length(voi)){
-  print(j)
-  var = voi[j];print(var)
-  for(k in 1:length(celltypes)){
-    celltype = celltypes[k]
-    Nj = sample(c(0,1),1000)#N[j,intersect_bc] # coverage
-    Wj = Ws[intersect_bc,celltype] # celltype ratio
-    beta_grid <- seq(0.1,1,by=0.1)
-    alpha = 0.05
-    n_sim = 1000
+#' for all variants of interest & all celltypes
+#' set permute_num=20 for now, shall be 1000
+#' @export
+power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X=NULL,
+                               sample_num=100,alpha=0.05,n_sim=10,beta_threshold=0.5,plot=T){
+  message("Running Power Analysis for Negative Celltypes and Mutations")
+  intersect_bc = intersect(colnames(N),rownames(Ws))
+  beta_list = c()
 
-    power_results = sapply(beta_grid,function(beta){
-      print(beta)
-      calc_power(beta,Nj,Wj,vaf_j,alpha,n_sim)
-    })
-    names(power_results) = beta_grid
-    plot(beta_grid,power_results,type="l",col="blue",lwd=2,
-         xlab="Beta",ylab="Power",main=paste0(var,", ",celltype),
-         ylim=c(0,1),xlim=c(0,1)
-    )
-    points(c(0.1,0.5,1),power_results[as.character(c(0.1,0.5,1))],pch=16)
-    abline(h=0.8,col="orange",lty=2)
+  if(plot){
+    pdf("example_power_analysis.pdf",height=8,width=8)
+    par(mfrow = c(ceiling(sqrt(length(celltypes))), ceiling(sqrt(length(celltypes))))) # Create a 2 x 2 plotting matrix
   }
+  for(j in 1:length(voi)){
+    var = voi[j];
+    print(paste0("voi ",j,":",var))
+    N_j = N[j,intersect_bc]
+    vaf_j = vaf[j,intersect_bc]
+
+    for(k in 1:length(celltypes)){
+      sample_idx = sample(intersect_bc,sample_num)
+      Nj = N_j[sample_idx] # sampled coverage
+      Wj = Ws[sample_idx,k] # celltype ratio
+      beta_grid <- seq(0.1,1,by=0.2)
+
+      power_results = sapply(beta_grid,function(beta){
+        #print(beta)
+        calc_power(beta,Nj,Wj,vaf_j,alpha,n_sim,verbose=F)
+      })
+      names(power_results) = beta_grid
+      beta_list[paste0(voi[j],"_",celltypes[k])] <- power_results
+
+      if(plot){
+        plot(beta_grid,power_results,type="l",col="blue",lwd=2,
+             xlab="Beta",ylab="Power",main=paste0(var,", ",celltypes[k]),
+             ylim=c(-0.1,1),xlim=c(0,1)
+        )
+        points(c(0.1,0.5,1),power_results[as.character(c(0.1,0.5,1))],pch=16)
+        abline(h=0.8,col="orange",lty=2)
+      }
+    }
+  }
+  if(plot){
+    dev.off()
+  }
+  return(beta_list)
 
 }

@@ -2,6 +2,7 @@
 
 export(celltype_test)
 export(plot_vaf_cellprop)
+export(power_analysis_all)
 import(Matrix)
 import(dplyr)
 import(ggplot2)
