@@ -125,6 +125,16 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
 
 
 #' Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
+#' Simulate alternative allele count values Xi through Binomial distribution Xi ~ Binom(Ni,beta_0 + beta_1 * Wik)
+#'
+#' @param beta A numeric value. Equivalent as beta_1 in the simulation.
+#' @param Nj A total coverage counts for a given variant j
+#' @param X A MT variant x cell alternative allele count matrix. Optional if vaf matrix is provided.
+#' @param vaf A MT variant x cell variant allele frequnecy (VAF) matrix. Equivalent as af.dm matrix.
+#' @param Ws A cell x celltype weight matrix. Representing spatial decomposition results from tools like RCTD.
+#' @param spatial_coords A cell x spatial coordinates matrix. Representing the actual spot/cell location in space.
+#' @param test_type Type of Celltype test. Options from c("linear","weighted").
+#' @param permute_num A numeric number representing permuation number for each variant.
 #'
 calc_power <- function(beta,Nj,Wj,vaf_j,alpha,n_sim,verbose=T,report_frac=3){
   rejections = 0
