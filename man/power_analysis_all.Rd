@@ -17,7 +17,8 @@ power_analysis_all(
   alpha = 0.05,
   n_sim = 10,
   beta_threshold = 0.5,
-  plot = T
+  plot = T,
+  save_path = NULL
 )
 }
 \description{

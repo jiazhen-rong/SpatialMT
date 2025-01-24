@@ -2,10 +2,29 @@
 % Please edit documentation in R/carrier_celltype_determination.R
 \name{calc_power}
 \alias{calc_power}
-\title{Power Analysis for Identifying Negative Mutations and Carrier Celltypes.}
+\title{Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
+Simulate alternative allele count values Xi through Binomial distribution Xi ~ Binom(Ni,beta_0 + beta_1 * Wik)}
 \usage{
 calc_power(beta, Nj, Wj, vaf_j, alpha, n_sim, verbose = T, report_frac = 3)
 }
+\arguments{
+\item{beta}{A numeric value. Equivalent as beta_1 in the simulation.}
+
+\item{Nj}{A total coverage counts for a given variant j}
+
+\item{X}{A MT variant x cell alternative allele count matrix. Optional if vaf matrix is provided.}
+
+\item{vaf}{A MT variant x cell variant allele frequnecy (VAF) matrix. Equivalent as af.dm matrix.}
+
+\item{Ws}{A cell x celltype weight matrix. Representing spatial decomposition results from tools like RCTD.}
+
+\item{spatial_coords}{A cell x spatial coordinates matrix. Representing the actual spot/cell location in space.}
+
+\item{test_type}{Type of Celltype test. Options from c("linear","weighted").}
+
+\item{permute_num}{A numeric number representing permuation number for each variant.}
+}
 \description{
 Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
+Simulate alternative allele count values Xi through Binomial distribution Xi ~ Binom(Ni,beta_0 + beta_1 * Wik)
 }

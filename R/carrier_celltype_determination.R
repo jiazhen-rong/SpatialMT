@@ -11,6 +11,7 @@
 #' @param spatial_coords A cell x spatial coordinates matrix. Representing the actual spot/cell location in space.
 #' @param test_type Type of Celltype test. Options from c("linear","weighted").
 #' @param permute_num A numeric number representing permuation number for each variant.
+#' @param save_path path for output results
 #'
 #' @param ... Other options used to control matching behavior between duplicate
 #'   strings. Passed on to [stringi::stri_opts_collator()].
@@ -24,7 +25,7 @@
 #' @export
 #'
 celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL,spatial_coords=NULL,
-                          test_type=c("linear","weighted"),permute_num=1000,plot=F){
+                          test_type=c("linear","weighted"),permute_num=1000,plot=F,save_path=NULL){
   # check for input and conditions
   if(test_type == "linear"){
     message("Performing Linear Rgression ...")
@@ -48,6 +49,11 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
   }else if(any(celltypes != colnames(Ws))){
     error("Celltypes and the column names of celltype weight matrix Ws not matched...Please check the variables celltypes or Ws.")
   }
+  if(is.null(save_path)){
+    save_path = "output/"
+  }else{
+    dir.create(save_path)
+  }
 
   # create plotting data frame
   if(plot==T){
@@ -66,7 +72,7 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
   pval_df=Matrix(NA,nrow=length(voi),ncol=length(celltypes))
 
   if(plot==T){
-    pdf(paste0(test_type,"_regression_anova_p_VAF_vs_celltype_plot.pdf"),height=10,width=10)
+    pdf(paste0(save_path,"/",test_type,"_regression_anova_p_VAF_vs_celltype_plot.pdf"),height=10,width=10)
   }
   for(j in 1:length(voi)){
     var = voi[j]
@@ -161,21 +167,28 @@ calc_power <- function(beta,Nj,Wj,vaf_j,alpha,n_sim,verbose=T,report_frac=3){
 #' set permute_num=20 for now, shall be 1000
 #' @export
 power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X=NULL,
-                               sample_num=100,alpha=0.05,n_sim=10,beta_threshold=0.5,plot=T){
+                               sample_num=100,alpha=0.05,n_sim=10,beta_threshold=0.5,plot=T,save_path=NULL){
+  if(is.null(save_path)){
+    save_path = "output/"
+  }else{
+    dir.create(save_path)
+  }
   message("Running Power Analysis for Negative Celltypes and Mutations")
   intersect_bc = intersect(colnames(N),rownames(Ws))
   beta_list = c()
 
   if(plot){
-    pdf("example_power_analysis.pdf",height=8,width=8)
-    par(mfrow = c(ceiling(sqrt(length(celltypes))), ceiling(sqrt(length(celltypes))))) # Create a 2 x 2 plotting matrix
+    pdf( paste0(save_path,"/example_power_analysis.pdf"),height=8,width=8)
   }
   for(j in 1:length(voi)){
     var = voi[j];
     print(paste0("voi ",j,":",var))
     N_j = N[j,intersect_bc]
     vaf_j = vaf[j,intersect_bc]
-
+    if(plot){
+      # Dynamically set the plotting grid to fit the number of cell types
+      par(mfrow = c(ceiling(sqrt(length(celltypes))), ceiling(sqrt(length(celltypes)))))
+    }
     for(k in 1:length(celltypes)){
       sample_idx = sample(intersect_bc,sample_num)
       Nj = N_j[sample_idx] # sampled coverage

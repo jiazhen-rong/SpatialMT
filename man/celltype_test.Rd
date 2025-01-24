@@ -14,7 +14,8 @@ celltype_test(
   spatial_coords = NULL,
   test_type = c("linear", "weighted"),
   permute_num = 1000,
-  plot = F
+  plot = F,
+  save_path = NULL
 )
 }
 \arguments{
@@ -35,6 +36,8 @@ celltype_test(
 \item{test_type}{Type of Celltype test. Options from c("linear","weighted").}
 
 \item{permute_num}{A numeric number representing permuation number for each variant.}
+
+\item{save_path}{path for output results}
 
 \item{...}{Other options used to control matching behavior between duplicate
 strings. Passed on to \code{\link[stringi:stri_opts_collator]{stringi::stri_opts_collator()}}.}
