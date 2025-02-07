@@ -422,18 +422,6 @@ plot_pval_grid <- function(results_grid, var_name=NULL,grid_size = 20) {
   return(pval_plot)
 }
 
-
-#' Plot P-Values from Grid-Based Regression for Each Cell Type
-#'
-#' This function plots the -log10 p-values for each cell type and variant
-#' within the spatial grid.
-#'
-#' @param results_grid A list containing p-values for each spatial grid.
-#' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
-#'
-#' @return A `ggplot2` object showing p-value distributions for each cell type.
-#' @export
-#'
 #' Plot P-Values from Grid-Based Regression for Each Cell Type
 #'
 #' This function plots the -log10 p-values for each cell type and variant
