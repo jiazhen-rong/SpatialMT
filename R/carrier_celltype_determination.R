@@ -129,6 +129,12 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
     dev.off()
     message("Diagnostic plots generated.")
   }
+  rownames(intercept_df)=voi
+  rownames(coef_df)=voi
+  rownames(pval_df)=voi
+  colnames(intercept_df) = colnames(Ws)
+  colnames(coef_df) = colnames(Ws)
+  colnames(pval_df) = colnames(Ws)
 
   return(res=list(intercept=intercept_df,coef=coef_df,pval=pval_df))
 }
@@ -172,9 +178,12 @@ calc_power <- function(beta,Nj,Wj,vaf_j,alpha,n_sim,verbose=T,report_frac=3){
 #' @export
 power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X=NULL,
                                sample_num=100,alpha=0.05,n_sim=10,beta_threshold=0.5,plot=T,save_path=NULL,
-                               height=8,width=8){
+                               figure_height=8,figure_width=8){
   if(is.null(save_path)){
     save_path = "output/"
+    message("Setting output folder to be 'outoput'")
+    dir.create(save_path)
+
   }else{
     dir.create(save_path)
   }
