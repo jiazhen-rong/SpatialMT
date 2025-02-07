@@ -240,9 +240,9 @@ plot_spatial_vaf <- function(X, N, af_matrix, spatial_coords, variant_name) {
   }
 
   # Generate plots
-  p1 <- highlight_plot(df, "VAF", paste("VAF of", variant_name), vaf_palette)
-  p2 <- highlight_plot(df, "Alt_Allele_Count", paste("Alt Allele Count of", variant_name), count_palette)
-  p3 <- highlight_plot(df, "Total_Count", paste("Total Count of", variant_name), count_palette)
+  p1 <- highlight_plot(df, "VAF", paste("VAF of", variant_name), vaf_palette) + coord_fixed(ratio=1)
+  p2 <- highlight_plot(df, "Alt_Allele_Count", paste("Alt Allele Count of", variant_name), count_palette) + coord_fixed(ratio=1)
+  p3 <- highlight_plot(df, "Total_Count", paste("Total Count of", variant_name), count_palette)  + coord_fixed(ratio=1)
 
   # Arrange plots in a grid
   combined_plot <- plot_grid(p1, p2, p3, ncol = 3)

@@ -232,3 +232,104 @@ power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X
   return(beta_list)
 
 }
+
+
+# Grid based test - Scan statistics
+#' Perform Celltype Test Within Spatial Grids
+#'
+#' This function partitions the spatial coordinates into a 20x20 grid and performs
+#' the linear regression test within each grid to identify significant cell types.
+#'
+#' @param celltypes A string vector of unique cell types.
+#' @param voi A string vector of variants of interest.
+#' @param N A matrix of total coverage counts (MT variant x cell).
+#' @param vaf A matrix of variant allele frequencies (MT variant x cell).
+#' @param Ws A matrix of cell type weights (cell x celltype).
+#' @param spatial_coords A matrix of spatial coordinates (cell x 2).
+#' @param test_type A string specifying test type: "linear" or "weighted".
+#' @param permute_num Number of permutations for weighted test.
+#' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
+#'
+#' @return A nested list of p-values for each grid and variant.
+#' @export
+#'
+celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
+                               test_type = c("linear", "weighted"),
+                               permute_num = 1000, grid_size = 20) {
+
+  # Ensure spatial_coords is a matrix/dataframe
+  spatial_coords <- as.data.frame(spatial_coords)
+  colnames(spatial_coords) <- c("X", "Y") # Ensure correct column names
+
+  # Create Grid Labels
+  spatial_coords$X_bin <- cut(spatial_coords$X, breaks = grid_size, labels = FALSE)
+  spatial_coords$Y_bin <- cut(spatial_coords$Y, breaks = grid_size, labels = FALSE)
+
+  # Create Unique Grid IDs
+  spatial_coords$Grid_ID <- paste0("Grid_", spatial_coords$X_bin, "_", spatial_coords$Y_bin)
+
+  # Find common cells across datasets
+  intersect_bc <- intersect(intersect(colnames(N), rownames(Ws)), rownames(spatial_coords))
+
+  # Merge Spatial Data with Weights and VAF
+  plot_df <- cbind(spatial_coords[intersect_bc, ],
+                   Ws[intersect_bc, ],
+                   as.data.frame(t(vaf[, intersect_bc])))
+
+  # Add Coverage Data
+  cov <- N[, intersect_bc]
+  rownames(cov) <- paste0(rownames(N), "_cov")
+  plot_df <- cbind(plot_df, t(cov))
+
+  # Initialize Output
+  results <- list()
+
+  # Loop through each grid
+  for (grid in unique(spatial_coords$Grid_ID)) {
+    message(paste("Processing:", grid))
+
+    # Subset data for the current grid
+    grid_cells <- spatial_coords$Grid_ID == grid
+    if (sum(grid_cells) == 0) next  # Skip empty grids
+
+    N_grid <- N[, grid_cells, drop = FALSE]
+    vaf_grid <- vaf[, grid_cells, drop = FALSE]
+    Ws_grid <- Ws[grid_cells, , drop = FALSE]
+
+    # Initialize Data Storage
+    intercept_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+    coef_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+    pval_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+
+    # Loop through each variant
+    for (j in 1:length(voi)) {
+      var <- voi[j]
+      message(paste("  Variant:", var))
+
+      N_j <- N_grid[j, ]
+      vaf_j <- vaf_grid[j, ]
+
+      for (k in 1:length(celltypes)) { # Loop through each cell type
+        data <- data.frame(vaf_j = vaf_j, N_j = N_j, W_sk = Ws_grid[, k])
+
+        # Perform Linear Regression
+        if (test_type == "linear") {
+          fit <- lm(vaf_j ~ W_sk, data = data)
+        } else if (test_type == "weighted") {
+          fit <- lm(vaf_j ~ W_sk, data = data, weights = sqrt(N_j))
+        }
+
+        # Store Results
+        res <- summary(fit)
+        intercept_df[j, k] <- res$coefficients[1, 1]
+        coef_df[j, k] <- res$coefficients[2, 1]
+        pval_df[j, k] <- res$coefficients[2, 4]
+      }
+    }
+
+    # Store grid results
+    results[[grid]] <- list(intercept = intercept_df, coef = coef_df, pval = pval_df)
+  }
+
+  return(results)
+}
