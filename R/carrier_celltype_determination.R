@@ -252,10 +252,9 @@ power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X
 #'
 #' @return A nested list of p-values for each grid and variant.
 #' @export
-#'
 celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
                                test_type = c("linear", "weighted"),
-                               permute_num = 1000, grid_size = 20) {
+                               permute_num = 1000, grid_size = 20,verbose=F) {
 
   # Ensure spatial_coords is a matrix/dataframe
   spatial_coords <- as.data.frame(spatial_coords)
@@ -286,7 +285,9 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
 
   # Loop through each grid
   for (grid in unique(spatial_coords$Grid_ID)) {
-    message(paste("Processing:", grid))
+    if(verbose){
+      message(paste("Processing:", grid))
+    }
 
     # Subset data for the current grid
     grid_cells <- spatial_coords$Grid_ID == grid
@@ -301,10 +302,19 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
     coef_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
     pval_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
 
+    rownames(intercept_df) <- voi
+    colnames(intercept_df) <- celltypes
+    rownames(coef_df) <- voi
+    colnames(coef_df) <- celltypes
+    rownames(pval_df) <- voi
+    colnames(pval_df) <- celltypes
+
     # Loop through each variant
     for (j in 1:length(voi)) {
       var <- voi[j]
-      message(paste("  Variant:", var))
+      if(verbose){
+        message(paste("  Variant:", var))
+      }
 
       N_j <- N_grid[j, ]
       vaf_j <- vaf_grid[j, ]
@@ -312,15 +322,34 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
       for (k in 1:length(celltypes)) { # Loop through each cell type
         data <- data.frame(vaf_j = vaf_j, N_j = N_j, W_sk = Ws_grid[, k])
 
-        # Perform Linear Regression
+        # Check if there is enough variation in the predictor
+        if (length(unique(data$W_sk)) == 1 || length(unique(data$vaf_j)) == 1) {
+          message(paste("Skipping grid", grid, "for", var, "-", celltypes[k], "due to insufficient variation"))
+          next
+        }
+
+        # Perform Linear Regression Safely
         if (test_type == "linear") {
-          fit <- lm(vaf_j ~ W_sk, data = data)
+          fit <- tryCatch(lm(vaf_j ~ W_sk, data = data), error = function(e) NULL)
         } else if (test_type == "weighted") {
-          fit <- lm(vaf_j ~ W_sk, data = data, weights = sqrt(N_j))
+          fit <- tryCatch(lm(vaf_j ~ W_sk, data = data, weights = sqrt(N_j)), error = function(e) NULL)
+        }
+
+        # Skip if fit fails
+        if (is.null(fit)) {
+          message(paste("Skipping grid", grid, "for", var, "-", celltypes[k], "due to regression failure"))
+          next
         }
 
         # Store Results
         res <- summary(fit)
+
+        # Ensure coefficients exist
+        if (nrow(res$coefficients) < 2) {
+          message(paste("Skipping grid", grid, "for", var, "-", celltypes[k], "due to missing coefficients"))
+          next
+        }
+
         intercept_df[j, k] <- res$coefficients[1, 1]
         coef_df[j, k] <- res$coefficients[2, 1]
         pval_df[j, k] <- res$coefficients[2, 4]
@@ -332,4 +361,161 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
   }
 
   return(results)
+}
+
+#' Plot P-Values from Grid-Based Regression
+#'
+#' This function plots the mean p-value per grid after running the `celltype_test_grid` function.
+#'
+#' @param results_grid A list containing p-values for each spatial grid.
+#' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
+#'
+#' @return A `ggplot2` object showing p-value distribution across the spatial grid.
+#' @export
+#'
+plot_pval_grid <- function(results_grid, var_name=NULL,grid_size = 20) {
+
+  # Extract Grid IDs
+  grid_ids <- names(results_grid)
+
+  # Convert Grid IDs into Numeric X and Y Coordinates
+  grid_data <- data.frame(
+    Grid_ID = grid_ids,
+    X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
+    Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
+    Mean_Pval = NA
+  )
+
+  # Compute Mean P-value for Each Grid (Averaged Across Variants & Celltypes)
+  for (i in seq_along(grid_ids)) {
+    grid <- grid_ids[i]
+    pvals <- results_grid[[grid]]$pval
+    grid_data$Mean_Pval[i] <- mean(pvals, na.rm = TRUE)  # Average p-values
+  }
+
+  # Define Log-Scaled P-value
+  grid_data$Log_Pval <- -log10(grid_data$Mean_Pval)  # Transform p-values
+
+  # Avoid infinite values: Cap log-transformed values at a max threshold
+  grid_data$Log_Pval[is.infinite(grid_data$Log_Pval)] <- max(grid_data$Log_Pval[!is.infinite(grid_data$Log_Pval)], na.rm = TRUE)
+
+  # Define Custom Color Scale
+  pval_palette <- scale_fill_gradientn(
+    colors = c("red", "grey"),  # Red for significant, grey for non-significant
+    values = scales::rescale(c(-log10(0.05), max(grid_data$Log_Pval, na.rm = TRUE))),  # Scale range
+    limits = c(0, max(grid_data$Log_Pval, na.rm = TRUE)),  # Ensures proper mapping
+    na.value = "white"  # Assigns white for missing values
+  )
+
+  # Plot Log-Scaled P-value Distribution Across the Grid
+  pval_plot <- ggplot(grid_data, aes(x = X_bin, y = Y_bin, fill = Log_Pval)) +
+    geom_tile(color = "white") +  # Grid Cells
+    pval_palette +
+    labs(title = paste0(var_name,"Log-Scaled P-value Distribution Across Spatial Grid"),
+         x = "Grid X", y = "Grid Y", fill = "-log10(P-value)") +
+    theme_minimal() +
+    coord_fixed()  # Keep aspect ratio square
+
+  pval_plot  # Display the plot
+
+
+  return(pval_plot)
+}
+
+
+#' Plot P-Values from Grid-Based Regression for Each Cell Type
+#'
+#' This function plots the -log10 p-values for each cell type and variant
+#' within the spatial grid.
+#'
+#' @param results_grid A list containing p-values for each spatial grid.
+#' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
+#'
+#' @return A `ggplot2` object showing p-value distributions for each cell type.
+#' @export
+#'
+#' Plot P-Values from Grid-Based Regression for Each Cell Type
+#'
+#' This function plots the -log10 p-values for each cell type and variant
+#' within the spatial grid, using a continuous color scale.
+#'
+#' @param results_grid A list containing p-values for each spatial grid.
+#' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
+#'
+#' @return A `ggplot2` object showing p-value distributions for each cell type.
+#' @export
+#'
+plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20) {
+
+  # Extract Grid IDs
+  grid_ids <- names(results_grid)
+  all_celltypes <- colnames(results_grid[[grid_ids[1]]]$pval)  # Extract cell types
+
+  # Initialize List to Store Plots
+  plot_list <- list()
+
+  # Loop Through Each Cell Type and Create a Plot
+  for (celltype in all_celltypes) {
+    grid_data <- data.frame(
+      Grid_ID = rep(grid_ids, each = length(results_grid[[1]]$pval[, celltype])),
+      Variant = rep(rownames(results_grid[[1]]$pval), times = length(grid_ids)),
+      X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
+      Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
+      Pval = unlist(lapply(results_grid, function(res) res$pval[, celltype]))
+    )
+
+    # Drop missing values (NA p-values)
+    grid_data <- grid_data %>% filter(!is.na(Pval))
+
+    # If no valid data, skip this celltype
+    if (nrow(grid_data) == 0) {
+      message(paste("Skipping cell type", celltype, "due to missing data"))
+      next
+    }
+
+    # Transform p-values: -log10 and cap at 4
+    grid_data$Log_Pval <- -log10(grid_data$Pval)
+    grid_data$Log_Pval[grid_data$Log_Pval > 4] <- 4  # Cap at 4
+
+    # Define Continuous Color Scale
+    pval_palette <- scale_fill_gradientn(
+      colors = c("grey", "red"),   # Grey for low p-values, red for high p-values
+      values = scales::rescale(c(0, -log10(0.05), 4)),  # Map p-values to colors
+      limits = c(0, 4),  # Ensures consistent scale
+      na.value = "white"  # Assigns white for missing values
+    )
+
+    # Generate Plots for Each Variant
+    for (variant in unique(grid_data$Variant)) {
+      df_variant <- grid_data %>% filter(Variant == variant)
+
+      # Skip empty data
+      if (nrow(df_variant) == 0) {
+        message(paste("Skipping", variant, "for", celltype, "due to missing data"))
+        next
+      }
+
+      p <- ggplot(df_variant, aes(x = X_bin, y = Y_bin, fill = Log_Pval)) +
+        geom_tile(color = "white") +  # Grid Cells
+        pval_palette +
+        labs(title = paste(variant, "-", celltype),
+             x = "Grid X", y = "Grid Y", fill = "-log10(P-value)") +
+        theme_minimal() +
+        coord_fixed()  # Keep aspect ratio square
+
+      # Store plot in list only if it has data
+      plot_list[[paste(variant, celltype, sep = "_")]] <- p
+    }
+  }
+
+  # Ensure at least one plot exists
+  if (length(plot_list) == 0) {
+    message("No valid plots available")
+    return(NULL)
+  }
+
+  # Arrange Plots in a Grid
+  combined_plot <- plot_grid(plotlist = plot_list, ncol = ceiling(sqrt(length(all_celltypes))))  # Adjust ncol if needed
+
+  return(combined_plot)
 }
