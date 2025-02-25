@@ -1,7 +1,7 @@
 #  helper functions of the spatial mito model
 
 # plotting VAF vs celltype proportions, colored by coverage
-plot_vaf_cellprop <- function(i,af.dm,norm_weights,plot_df,intercept,coef,pval,permute=F){
+plot_vaf_cellprop <- function(i,af.dm,norm_weights,plot_df,intercept,coef,pval,permute=F,return_plot=F){
   if(permute==T){
     p_str = "permute_p"
   }else{
@@ -11,6 +11,10 @@ plot_vaf_cellprop <- function(i,af.dm,norm_weights,plot_df,intercept,coef,pval,p
   var = rownames(af.dm)[i]
   p_list = list()
   for(k in 1:length(colnames(norm_weights))){
+    # Ensure pval[k] is numeric and handle NA values safely
+    formatted_pval <- ifelse(!is.na(pval[k]) & is.numeric(pval[k]),
+                             formatC(as.numeric(pval[k]), format = "e", digits = 2),
+                             "NA")
     celltype=colnames(norm_weights)[k]
     fit_df=data.frame(x=seq(0,1,0.01),y=intercept[k]+coef[k]*seq(0,1,0.01))
     p_list[[celltype]]  = local({
@@ -30,14 +34,22 @@ plot_vaf_cellprop <- function(i,af.dm,norm_weights,plot_df,intercept,coef,pval,p
               axis.line = element_line(colour = "black"),
               axis.text.x =  element_text(angle = 90,vjust=0.5,hjust=1))+
         scale_color_continuous(low="grey",high="red") +
-        ggtitle(paste0(celltype," ",p_str,": ",formatC(pval[k],format="e",digits=2))) +
+        ylim(c(0,1))+
+        ggtitle(paste0(celltype," ",p_str,": ",formatted_pval)) +
         xlab("Celltype Proportions") +  ylab("VAF") +
         guides(color=guide_legend(title="Coverage"))#,size=guide_legend(title="Coverage"))
     })
 
   }
-  # to speed up, can choose to save in pdf
-  grid.arrange(grobs=p_list,top=var)
+
+  if(return_plot){
+    #plots=grid.arrange(grobs=p_list,top=var)
+    plots <- arrangeGrob(grobs = p_list, top = var)
+    return(plots)
+  }else{
+    # to speed up, can choose to save in pdf
+    grid.arrange(grobs=p_list,top=var)
+  }
 }
 
 #' Plot Variant Diagnostic Plots
@@ -249,4 +261,5 @@ plot_spatial_vaf <- function(X, N, af_matrix, spatial_coords, variant_name) {
 
   return(combined_plot)
 }
+
 

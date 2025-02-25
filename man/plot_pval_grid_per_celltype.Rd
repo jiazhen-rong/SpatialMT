@@ -4,12 +4,20 @@
 \alias{plot_pval_grid_per_celltype}
 \title{Plot P-Values from Grid-Based Regression for Each Cell Type}
 \usage{
-plot_pval_grid_per_celltype(results_grid, grid_size = 20)
+plot_pval_grid_per_celltype(
+  results_grid,
+  grid_size = 20,
+  coef_plot_option = "grey"
+)
 }
 \arguments{
 \item{results_grid}{A list containing p-values for each spatial grid.}
 
 \item{grid_size}{Number of bins per axis (default = 20 for 20x20 grid).}
+
+\item{coef_plot_option}{A string from c("grey","negative"),
+indicating if plotting the negative coeffient p-value as 1 or reversed sign.
+Default "grey", setting to p-val = 1 (-log10p-val = 0).}
 }
 \value{
 A \code{ggplot2} object showing p-value distributions for each cell type.

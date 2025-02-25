@@ -7,22 +7,23 @@
 celltype_test_grid(
   celltypes,
   voi,
-  N,
+  N_voi,
   vaf,
   Ws,
   spatial_coords,
   test_type = c("linear", "weighted"),
   permute_num = 1000,
   grid_size = 20,
-  verbose = F
+  verbose = F,
+  vaf_cellprop = T,
+  power = T,
+  disease_celltype = NULL
 )
 }
 \arguments{
 \item{celltypes}{A string vector of unique cell types.}
 
 \item{voi}{A string vector of variants of interest.}
-
-\item{N}{A matrix of total coverage counts (MT variant x cell).}
 
 \item{vaf}{A matrix of variant allele frequencies (MT variant x cell).}
 
@@ -35,6 +36,8 @@ celltype_test_grid(
 \item{permute_num}{Number of permutations for weighted test.}
 
 \item{grid_size}{Number of bins per axis (default = 20 for 20x20 grid).}
+
+\item{N}{A matrix of total coverage counts (MT variant x cell).}
 }
 \value{
 A nested list of p-values for each grid and variant.

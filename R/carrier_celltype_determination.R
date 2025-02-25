@@ -252,12 +252,15 @@ power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X
 #'
 #' @return A nested list of p-values for each grid and variant.
 #' @export
-celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
+celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
                                test_type = c("linear", "weighted"),
-                               permute_num = 1000, grid_size = 20,verbose=F) {
+                               permute_num = 1000, grid_size= 20,verbose=F,
+                               vaf_cellprop=T,power=T,disease_celltype=NULL) {
+  # Find common cells across datasets
+  intersect_bc <- intersect(intersect(colnames(N_voi), rownames(Ws)), rownames(spatial_coords))
 
   # Ensure spatial_coords is a matrix/dataframe
-  spatial_coords <- as.data.frame(spatial_coords)
+  spatial_coords <- as.data.frame(spatial_coords[intersect_bc,])
   colnames(spatial_coords) <- c("X", "Y") # Ensure correct column names
 
   # Create Grid Labels
@@ -267,21 +270,25 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
   # Create Unique Grid IDs
   spatial_coords$Grid_ID <- paste0("Grid_", spatial_coords$X_bin, "_", spatial_coords$Y_bin)
 
-  # Find common cells across datasets
-  intersect_bc <- intersect(intersect(colnames(N), rownames(Ws)), rownames(spatial_coords))
-
   # Merge Spatial Data with Weights and VAF
   plot_df <- cbind(spatial_coords[intersect_bc, ],
                    Ws[intersect_bc, ],
-                   as.data.frame(t(vaf[, intersect_bc])))
+                   vaf=as.data.frame(vaf[, intersect_bc]))
+  colnames(plot_df)[length(colnames(plot_df))] = voi
+
+  Ws = Ws[intersect_bc, ]
+  vaf = vaf[, intersect_bc,drop=F]
+  N_voi = N_voi[,intersect_bc,drop=F]
 
   # Add Coverage Data
-  cov <- N[, intersect_bc]
-  rownames(cov) <- paste0(rownames(N), "_cov")
+  #cov <- N[, intersect_bc]
+  cov <- N_voi[,intersect_bc,drop=F]
+  rownames(cov) <- paste0(rownames(N_voi), "_cov")
   plot_df <- cbind(plot_df, t(cov))
 
   # Initialize Output
   results <- list()
+  grid_vaf_cellprop_plot <- list()
 
   # Loop through each grid
   for (grid in unique(spatial_coords$Grid_ID)) {
@@ -293,9 +300,10 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
     grid_cells <- spatial_coords$Grid_ID == grid
     if (sum(grid_cells) == 0) next  # Skip empty grids
 
-    N_grid <- N[, grid_cells, drop = FALSE]
+    N_grid <- N_voi[, grid_cells, drop = FALSE]
     vaf_grid <- vaf[, grid_cells, drop = FALSE]
     Ws_grid <- Ws[grid_cells, , drop = FALSE]
+
 
     # Initialize Data Storage
     intercept_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
@@ -319,8 +327,27 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
       N_j <- N_grid[j, ]
       vaf_j <- vaf_grid[j, ]
 
+      # low diseased proportion but high coverage
+      sample_idx = intersect(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])],
+                             colnames(N_voi)[N_voi[var,] > 1])
+      # if(verbose){
+      #   print(paste0("low prop spots:",length(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])])))
+      #   print(paste0("high cov spots:",length(colnames(N_voi)[N_voi[var,] > 1])))
+      # }
+      #intersect(rownames(Ws)[(Ws[,disease_celltype] < 0.2) & !is.na(Ws[,disease_celltype])],
+      #          colnames(N)[N[var,] > 2])
+
+        #colnames(vaf)[(N_voi[j,] <5) & (N_voi[j,] >0) ] # low coverage spots
+        #sample(colnames(vaf)[(N_voi[j,] <5 )&(N_voi[j,] >0)],1000)
+
+
+      N_j <- append(N_j,N_voi[j,sample_idx])
+      vaf_j <- append(vaf_j,vaf[j,sample_idx])
+
+
       for (k in 1:length(celltypes)) { # Loop through each cell type
-        data <- data.frame(vaf_j = vaf_j, N_j = N_j, W_sk = Ws_grid[, k])
+        Ws_jk = append(Ws_grid[, k], Ws[sample_idx,k])
+        data <- data.frame(vaf_j = vaf_j, N_j = N_j, W_sk = Ws_jk )
 
         # Check if there is enough variation in the predictor
         if (length(unique(data$W_sk)) == 1 || length(unique(data$vaf_j)) == 1) {
@@ -331,8 +358,10 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
         # Perform Linear Regression Safely
         if (test_type == "linear") {
           fit <- tryCatch(lm(vaf_j ~ W_sk, data = data), error = function(e) NULL)
+          permute=F
         } else if (test_type == "weighted") {
           fit <- tryCatch(lm(vaf_j ~ W_sk, data = data, weights = sqrt(N_j)), error = function(e) NULL)
+          permute=T
         }
 
         # Skip if fit fails
@@ -353,14 +382,31 @@ celltype_test_grid <- function(celltypes, voi, N, vaf, Ws, spatial_coords,
         intercept_df[j, k] <- res$coefficients[1, 1]
         coef_df[j, k] <- res$coefficients[2, 1]
         pval_df[j, k] <- res$coefficients[2, 4]
+
+        #if(power){}
+      }
+      # plot vaf vs celltype diagnostic for grid
+      if(vaf_cellprop){
+        intercept=intercept_df[j,]
+        coef=coef_df[j,]
+        pval=pval_df[j,]
+        print(pval)
+        temp_plot_df = plot_df[grid_cells,];
+        grid_vaf_cellprop_plot[[grid]] =
+          plot_vaf_cellprop(j,vaf_grid,Ws_grid,temp_plot_df ,
+                          intercept,coef,pval,permute,return_plot=T)
       }
     }
 
     # Store grid results
     results[[grid]] <- list(intercept = intercept_df, coef = coef_df, pval = pval_df)
   }
-
-  return(results)
+  if(vaf_cellprop){
+    return(list(results=results,vaf_cellprop_plots=grid_vaf_cellprop_plot,
+                spatial_coords_grids=spatial_coords))
+  }else{
+    return(results)
+  }
 }
 
 #' Plot P-Values from Grid-Based Regression
@@ -429,11 +475,15 @@ plot_pval_grid <- function(results_grid, var_name=NULL,grid_size = 20) {
 #'
 #' @param results_grid A list containing p-values for each spatial grid.
 #' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
+#' @param coef_plot_option A string from c("grey","negative"),
+#' indicating if plotting the negative coeffient p-value as 1 or reversed sign.
+#' Default "grey", setting to p-val = 1 (-log10p-val = 0).
 #'
 #' @return A `ggplot2` object showing p-value distributions for each cell type.
 #' @export
 #'
-plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20) {
+plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20,
+                                        coef_plot_option="grey"){
 
   # Extract Grid IDs
   grid_ids <- names(results_grid)
@@ -449,6 +499,7 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20) {
       Variant = rep(rownames(results_grid[[1]]$pval), times = length(grid_ids)),
       X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
       Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
+      coef = unlist(lapply(results_grid, function(res) res$coef[, celltype])),
       Pval = unlist(lapply(results_grid, function(res) res$pval[, celltype]))
     )
 
@@ -464,14 +515,30 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20) {
     # Transform p-values: -log10 and cap at 4
     grid_data$Log_Pval <- -log10(grid_data$Pval)
     grid_data$Log_Pval[grid_data$Log_Pval > 4] <- 4  # Cap at 4
+    if(coef_plot_option=="grey"){
+      grid_data$Log_Pval[grid_data$coef < 0] = 0
+    }else if(coef_plot_option=="negative"){
+      grid_data$Log_Pval[grid_data$coef < 0] = -grid_data$Log_Pval[grid_data$coef < 0]
+    }
+
+
 
     # Define Continuous Color Scale
-    pval_palette <- scale_fill_gradientn(
-      colors = c("grey", "red"),   # Grey for low p-values, red for high p-values
-      values = scales::rescale(c(0, -log10(0.05), 4)),  # Map p-values to colors
-      limits = c(0, 4),  # Ensures consistent scale
-      na.value = "white"  # Assigns white for missing values
-    )
+    if(coef_plot_option=="grey"){
+      pval_palette <- scale_fill_gradientn(
+        colors = c("darkgrey","grey","red"),   # Grey for low p-values, red for high p-values
+        values = scales::rescale(c(0, -log10(0.05), 4)),  # Map p-values to colors
+        limits = c(0, 4),  # Ensures consistent scale
+        na.value = "white"  # Assigns white for missing values
+      )
+    }else if(coef_plot_option=="negative"){
+      pval_palette <- scale_fill_gradientn(
+        colors = c("blue","grey", "red"),   # Grey for low p-values, red for high p-values
+        values = scales::rescale(c(-4, 0, 4)),  # Map p-values to colors
+        limits = c(-4, 4),  # Ensures consistent scale
+        na.value = "white"  # Assigns white for missing values
+      )
+    }
 
     # Generate Plots for Each Variant
     for (variant in unique(grid_data$Variant)) {
@@ -506,4 +573,80 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20) {
   combined_plot <- plot_grid(plotlist = plot_list, ncol = ceiling(sqrt(length(all_celltypes))))  # Adjust ncol if needed
 
   return(combined_plot)
+}
+
+
+#' Compute Gene Program Enrichment per Grid
+#'
+#' @param seu Seurat object containing gene expression data.
+#' @param results_grid A list containing grid-based cell assignments.
+#' @param gene_programs A named list where each element is a vector of genes for a specific program.
+#'
+#' @return A list containing enrichment scores for each grid.
+#' @export
+compute_gene_program_enrichment <- function(seu, results_grid, spatial_coords_grids, gene_programs) {
+
+  # Initialize storage list
+  enrichment_scores <- list()
+  # Extract Grid IDs
+  grid_ids <- names(results_grid)
+
+  # Loop through each grid
+  for (grid in grid_ids) {
+
+    # Get barcodes in this grid
+    barcodes <- rownames(spatial_coords_grids)[spatial_coords_grids$Grid_ID == grid]
+
+    # Skip empty grids
+    if (length(barcodes) == 0) {
+      message(paste("Skipping", grid, "- No barcodes found"))
+      next
+    }
+
+    # Subset Seurat object to these barcodes
+    seu_subset <- subset(seu, cells = barcodes)
+
+    # Calculate module scores for gene programs
+    #genes=intersect(gene_programs, rownames(seu_subset))
+    seu_subset <- AddModuleScore(seu_subset, features = gene_programs,
+                                 name=names(gene_programs),
+                                 #name = "GeneProgram",
+                                 assay="RNA",nbin=10)
+
+    # Store scores in list
+    enrichment_scores[[grid]] <- FetchData(seu_subset, vars=paste0(names(gene_programs),seq_along(gene_programs) ))
+                                           #vars =  paste0("GeneProgram", seq_along(gene_programs)))
+  }
+
+  # Convert enrichment results to a plottable data frame
+  plot_data <- do.call(rbind, lapply(names(enrichment_scores), function(grid) {
+    scores <- enrichment_scores[[grid]]
+    if (is.null(scores)) return(NULL)  # Skip if empty
+
+    # Compute mean enrichment per grid
+    mean_scores <- colMeans(scores, na.rm = TRUE)
+
+    # Extract grid positions
+    x_bin <- as.numeric(strsplit(grid, "_")[[1]][2])
+    y_bin <- as.numeric(strsplit(grid, "_")[[1]][3])
+
+    # Convert to data frame
+    data.frame(Grid_ID = grid, X_bin = x_bin, Y_bin = y_bin, t(mean_scores))
+  }))
+
+  # Reshape to long format for ggplot
+  plot_data_long <- pivot_longer(plot_data, cols =paste0(names(gene_programs), seq_along(gene_programs))
+                                 , names_to = "GeneProgram", values_to = "Score")
+
+  # Generate heatmap of gene program enrichment
+  enrichment_plot <- ggplot(plot_data_long, aes(x = X_bin, y = Y_bin, fill = Score)) +
+    geom_tile(color = "white") +  # Grid cells
+    scale_fill_gradient2(low = "blue", mid = "grey", high = "red", midpoint = 0, na.value = "white") +  # Color scale
+    facet_wrap(~GeneProgram) +  # One plot per gene program
+    labs(title = "Gene Program Enrichment Across Spatial Grid",
+         x = "Grid X", y = "Grid Y", fill = "Enrichment Score") +
+    theme_minimal() +
+    coord_fixed()  # Keep aspect ratio square
+
+  return(list(scores = enrichment_scores, plot = enrichment_plot))
 }
