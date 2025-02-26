@@ -17,7 +17,8 @@ celltype_test(
   plot = F,
   save_path = NULL,
   figure_height = 10,
-  figure_width = 10
+  figure_width = 10,
+  method = "Raw"
 )
 }
 \arguments{
@@ -44,6 +45,8 @@ celltype_test(
 \item{figure_height}{output pdf figure height}
 
 \item{figure_width}{output pdf figure width}
+
+\item{method}{P-value correction method: Options: c("FDR", "FWER", "Raw").}
 
 \item{...}{Other options used to control matching behavior between duplicate
 strings. Passed on to \code{\link[stringi:stri_opts_collator]{stringi::stri_opts_collator()}}.}

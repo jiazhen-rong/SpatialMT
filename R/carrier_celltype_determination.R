@@ -14,6 +14,7 @@
 #' @param save_path path for output results
 #' @param figure_height output pdf figure height
 #' @param figure_width output pdf figure width
+#' @param method P-value correction method: Options: c("FDR", "FWER", "Raw").
 #'
 #' @param ... Other options used to control matching behavior between duplicate
 #'   strings. Passed on to [stringi::stri_opts_collator()].
@@ -28,7 +29,7 @@
 #'
 celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL,spatial_coords=NULL,
                           test_type=c("linear","weighted"),permute_num=1000,plot=F,save_path=NULL,
-                          figure_height=10,figure_width=10){
+                          figure_height=10,figure_width=10,method="Raw"){
   # check for input and conditions
   if(test_type == "linear"){
     message("Performing Linear Rgression ...")
@@ -53,13 +54,14 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
     error("Celltypes and the column names of celltype weight matrix Ws not matched...Please check the variables celltypes or Ws.")
   }
   if(is.null(save_path)){
+    message("Default saving results to 'output' folder...")
     save_path = "output/"
   }else{
     dir.create(save_path)
   }
 
   # create plotting data frame
-  if(plot==T){
+  if(plot){
     intersect_bc=intersect(intersect(colnames(N),rownames(Ws)),rownames(spatial_coords))
     plot_df=cbind(spatial_coords[intersect_bc,],
                   Ws[intersect_bc,],
@@ -73,17 +75,24 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
   intercept_df = Matrix(NA,nrow=length(voi),ncol=length(celltypes))
   coef_df = Matrix(NA,nrow=length(voi),ncol=length(celltypes))
   pval_df=Matrix(NA,nrow=length(voi),ncol=length(celltypes))
+  adjusted_pval_df <- Matrix(NA_real_, nrow = length(voi), ncol = length(celltypes),sparse=F)
 
-  if(plot==T){
-    pdf(paste0(save_path,"/",test_type,"_regression_anova_p_VAF_vs_celltype_plot.pdf"),
-        height=figure_height,width=figure_width)
-  }
+  rownames(intercept_df) <- voi
+  colnames(intercept_df) <- celltypes
+  rownames(coef_df) <- voi
+  colnames(coef_df) <- celltypes
+  rownames(pval_df) <- voi
+  colnames(pval_df) <- celltypes
+  rownames(adjusted_pval_df) <- voi
+  colnames(adjusted_pval_df) <- celltypes
+
+  all_pvals <- c()  # Store all p-values for multiple testing correction
+
   for(j in 1:length(voi)){
     var = voi[j]
     print(paste0(j,": ", var))
     N_j = N[j,]
     vaf_j = vaf[j,]
-
 
     for(k in 1:length(celltypes)){ # for each celltype
 
@@ -117,28 +126,131 @@ celltype_test <- function(celltypes=NULL,voi=NULL,N=NULL,vaf=NULL,X=NULL,Ws=NULL
         pval_df[j,k] = 1- sum(res$coefficients[2,1] >= coef_list)/length(coef_list)
       }
     }
+    # Collect p-values
+    all_pvals <- c(all_pvals, pval_df[j, ])
+  }
+
+  # Apply Multiple Testing Correction
+  if (method == "FDR") {
+    all_pvals_adj <- p.adjust(all_pvals, method = "fdr")  # FDR correction
+    message("Applying FDR correction to p-values.")
+  } else if (method == "FWER") {
+    all_pvals_adj <- p.adjust(all_pvals, method = "bonferroni")  # Bonferroni for FWER
+    message("Applying FWER correction to p-values.")
+  } else {
+    all_pvals_adj <- all_pvals  # Keep raw p-values
+    message("Using raw p-values.")
+  }
+
+  # Restore adjusted p-values into `adjusted_pval_df`
+  index <- 1
+  for(j in 1:length(voi)){
+    adjusted_pval_df[j,1:length(celltypes)] = as.numeric(all_pvals_adj[index:(index + length(celltypes) - 1)])
+    index <- index + length(celltypes)
+  }
+
+
+  rownames(adjusted_pval_df) <- voi
+  colnames(adjusted_pval_df) <- celltypes
+
+  if(plot){
+    message("Plotting raw p-values...")
+    pdf(paste0(save_path,"/",test_type,"_regression_VAF_vs_celltype_plot.pdf"),
+        height=figure_height,width=figure_width)
     # for variant j, plot out the fitted values on the diagnostic plots
-    if(plot==T){
+    for(j in 1:length(voi)){
       intercept=intercept_df[j,]
       coef=coef_df[j,]
       pval=pval_df[j,]
       plot_vaf_cellprop(j,af.dm,Ws,plot_df,intercept,coef,pval)
     }
-  }
-  if(plot==T){
     dev.off()
+    # plot adjusted p-value as well
+    if(method!="Raw"){
+      message("Plotting adjusted p-values")
+      pdf(paste0(save_path,"/",test_type,"_regression_VAF_vs_celltype_plot_",method,"_adjustedP.pdf"),
+          height=figure_height,width=figure_width)
+      # for variant j, plot out the fitted values on the diagnostic plots
+      for(j in 1:length(voi)){
+        intercept=intercept_df[j,]
+        coef=coef_df[j,]
+        pval=adjusted_pval_df[j,]
+        plot_vaf_cellprop(j,af.dm,Ws,plot_df,intercept,coef,pval)
+      }
+      dev.off()
+    }
     message("Diagnostic plots generated.")
   }
-  rownames(intercept_df)=voi
-  rownames(coef_df)=voi
-  rownames(pval_df)=voi
-  colnames(intercept_df) = colnames(Ws)
-  colnames(coef_df) = colnames(Ws)
-  colnames(pval_df) = colnames(Ws)
 
-  return(res=list(intercept=intercept_df,coef=coef_df,pval=pval_df))
+  return(res=list(intercept=intercept_df,coef=coef_df,pval=pval_df,
+                  adjusted_pval = adjusted_pval_df,adjusted_method=method))
 }
 
+#' Filter Significant Variants Based on Adjusted P-values and Coefficients
+#'
+#' This function takes a results object (from a celltype testing analysis) that contains raw and adjusted
+#' p-values as well as coefficients for each variant across multiple cell types. It filters for variants
+#' with an adjusted p-value below a specified alpha threshold and a positive coefficient, and then saves
+#' the significant variants for each cell type into a text file.
+#'
+#' @param results A list object returned by \code{celltype_test()} that contains matrices:
+#'   \code{adjusted_pval} (adjusted p-values) and \code{coef} (regression coefficients) with rows as variants
+#'   and columns as cell types.
+#' @param alpha_threshold A numeric value specifying the significance threshold for adjusted p-values (default is 0.05).
+#' @param output_file A character string specifying the filename where the significant variants will be saved (default is "significant_variants.txt").
+#'
+#' @return A list where each element corresponds to a cell type and contains the names of the variants that meet the criteria.
+#'
+#' @examples
+#' \dontrun{
+#'   # With 'results'object returned from celltype_test():
+#'   sig_vars <- filter_significant_variants(results, alpha_threshold = 0.05, output_file = "output/sig_variants.txt")
+#' }
+#'
+#' @export
+filter_significant_variants <- function(results, alpha_threshold = 0.05, output_file = "output/significant_variants.txt") {
+  # 'results' should be a list with at least:
+  #   results$adjusted_pval: a matrix with variants as rows and cell types as columns
+  #   results$coef: a matrix with variants as rows and cell types as columns
+
+  # Get the adjusted p-values and coefficient matrices
+  adjusted_pval <- results$adjusted_pval
+  coef_mat <- results$coef
+
+  # Get variant names and cell type names
+  variant_names <- rownames(adjusted_pval)
+  celltypes <- colnames(adjusted_pval)
+
+  # Create a list to store significant variants per cell type
+  sig_variants <- list()
+
+  # Loop over each cell type and filter variants
+  for (celltype_i in celltypes) {
+    sig_idx <- which(adjusted_pval[, celltype_i] < alpha_threshold & coef_mat[, celltype_i] > 0)
+    if (length(sig_idx) > 0) {
+      sig_variants[[celltype_i]] <- variant_names[sig_idx]
+    } else {
+      sig_variants[[celltype_i]] <- character(0)
+    }
+  }
+
+  # Write the significant variants to a text file
+  message("Saving significant variants for each celltype..")
+  file_conn <- file(output_file, "w")
+  for (celltype_i in names(sig_variants)) {
+    writeLines(paste("Cell Type:", celltype_i), file_conn)
+    if (length(sig_variants[[celltype_i]]) > 0) {
+      writeLines(sig_variants[[celltype_i]], file_conn)
+    } else {
+      writeLines("No significant variants found.", file_conn)
+    }
+    writeLines("----------", file_conn)
+  }
+  close(file_conn)
+
+  # Return the list of significant variants for further use if desired
+  return(sig_variants)
+}
 
 #' Power Analysis for Identifying Negative Mutations and Carrier Celltypes.
 #' Simulate alternative allele count values Xi through Binomial distribution Xi ~ Binom(Ni,beta_0 + beta_1 * Wik)
@@ -343,6 +455,8 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
       if(is.null(sample_idx)){
         sample_idx = intersect(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])],
                                colnames(N_voi)[N_voi[var,] > 1])
+      }else{
+        message("Using user input spots as control: ", length(sample_idx)," spots")
       }
       # if(verbose){
       #   print(paste0("low prop spots:",length(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])])))
