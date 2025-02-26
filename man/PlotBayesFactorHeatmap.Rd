@@ -11,7 +11,8 @@ PlotBayesFactorHeatmap(
   spatial_coords,
   BF_cap = 3,
   cor_order = T,
-  ngroups = length(voi)
+  ngroups = length(voi),
+  method = c("BF", "sigmoid")
 )
 }
 \arguments{

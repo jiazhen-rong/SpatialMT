@@ -7,7 +7,10 @@
 plot_pval_grid_per_celltype(
   results_grid,
   grid_size = 20,
-  coef_plot_option = "grey"
+  coef_plot_option = "grey",
+  method = "Raw",
+  max_log10p_cap = 5,
+  p_thresh = 0.05
 )
 }
 \arguments{
@@ -15,12 +18,16 @@ plot_pval_grid_per_celltype(
 
 \item{grid_size}{Number of bins per axis (default = 20 for 20x20 grid).}
 
-\item{coef_plot_option}{A string from c("grey","negative"),
+\item{coef_plot_option}{A string from c("grey","negative"),}
+
+\item{max_log10p_cap}{Maximum cap for -log10(p-values) (default = 5).}
+
+\item{p_thresh}{Threshold for significance (default = 0.05).
 indicating if plotting the negative coeffient p-value as 1 or reversed sign.
 Default "grey", setting to p-val = 1 (-log10p-val = 0).}
 }
 \value{
-A \code{ggplot2} object showing p-value distributions for each cell type.
+A grid plot showing p-value distributions for each cell type.
 }
 \description{
 This function plots the -log10 p-values for each cell type and variant

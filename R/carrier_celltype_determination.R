@@ -249,13 +249,16 @@ power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X
 #' @param test_type A string specifying test type: "linear" or "weighted".
 #' @param permute_num Number of permutations for weighted test.
 #' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
+#' @param method P-value correction methods. Options from c("FDR","FWER","Raw").
+#' @param sample_idx Spots as control for each grid's regression. Usually low diseased celltype proportions and not low coverage spots.
 #'
 #' @return A nested list of p-values for each grid and variant.
 #' @export
 celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
                                test_type = c("linear", "weighted"),
                                permute_num = 1000, grid_size= 20,verbose=F,
-                               vaf_cellprop=T,power=T,disease_celltype=NULL) {
+                               vaf_cellprop=T,power=T,disease_celltype=NULL,
+                               method="Raw",sample_idx = NULL) {
   # Find common cells across datasets
   intersect_bc <- intersect(intersect(colnames(N_voi), rownames(Ws)), rownames(spatial_coords))
 
@@ -289,6 +292,9 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
   # Initialize Output
   results <- list()
   grid_vaf_cellprop_plot <- list()
+  if(method !=" Raw"){
+    all_pvals <- c()  # Store all p-values for correction later
+  }
 
   # Loop through each grid
   for (grid in unique(spatial_coords$Grid_ID)) {
@@ -317,6 +323,12 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
     rownames(pval_df) <- voi
     colnames(pval_df) <- celltypes
 
+    # for adjusted p-value
+    adjusted_pval_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+    rownames(adjusted_pval_df) <- voi
+    colnames(adjusted_pval_df) <- celltypes
+
+
     # Loop through each variant
     for (j in 1:length(voi)) {
       var <- voi[j]
@@ -328,8 +340,10 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
       vaf_j <- vaf_grid[j, ]
 
       # low diseased proportion but high coverage
-      sample_idx = intersect(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])],
-                             colnames(N_voi)[N_voi[var,] > 1])
+      if(is.null(sample_idx)){
+        sample_idx = intersect(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])],
+                               colnames(N_voi)[N_voi[var,] > 1])
+      }
       # if(verbose){
       #   print(paste0("low prop spots:",length(rownames(Ws)[(Ws[,disease_celltype] < 0.3) & !is.na(Ws[,disease_celltype])])))
       #   print(paste0("high cov spots:",length(colnames(N_voi)[N_voi[var,] > 1])))
@@ -383,6 +397,11 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
         coef_df[j, k] <- res$coefficients[2, 1]
         pval_df[j, k] <- res$coefficients[2, 4]
 
+        # Collect p-values for correction
+        if(method!="Raw"){
+          all_pvals <- c(all_pvals, pval_df[j, k])
+        }
+
         #if(power){}
       }
       # plot vaf vs celltype diagnostic for grid
@@ -399,73 +418,35 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
     }
 
     # Store grid results
-    results[[grid]] <- list(intercept = intercept_df, coef = coef_df, pval = pval_df)
+    results[[grid]] <- list(intercept = intercept_df, coef = coef_df, pval = pval_df,
+                            adjusted_pval = adjusted_pval_df)
   }
+
+  ### **Apply P-Value Adjustment After All Grids Have Been Processed**
+  if (method == "FDR") {
+    all_pvals_adj <- p.adjust(all_pvals, method = "fdr")  # FDR correction
+    message("Applying FDR correction to p-values.")
+  } else if (method == "FWER") {
+    all_pvals_adj <- p.adjust(all_pvals, method = "bonferroni")  # Bonferroni for FWER
+    message("Applying FWER correction to p-values.")
+  } else if(method == "Raw"){
+    all_pvals_adj <- all_pvals  # Keep raw p-values
+    message("Using raw p-values.")
+  }
+
+  # Restore adjusted p-values into `adjusted_pval_df`
+  index <- 1
+  for (grid in names(results)) {
+    results[[grid]]$adjusted_pval[1,1:length(celltypes)] <- as.numeric(all_pvals_adj[index:(index + length(celltypes) - 1)])
+    index <- index + length(celltypes)
+  }
+
   if(vaf_cellprop){
     return(list(results=results,vaf_cellprop_plots=grid_vaf_cellprop_plot,
                 spatial_coords_grids=spatial_coords))
   }else{
-    return(results)
+    return(list(results=results,spatial_coords_grids=spatial_coords))
   }
-}
-
-#' Plot P-Values from Grid-Based Regression
-#'
-#' This function plots the mean p-value per grid after running the `celltype_test_grid` function.
-#'
-#' @param results_grid A list containing p-values for each spatial grid.
-#' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
-#'
-#' @return A `ggplot2` object showing p-value distribution across the spatial grid.
-#' @export
-#'
-plot_pval_grid <- function(results_grid, var_name=NULL,grid_size = 20) {
-
-  # Extract Grid IDs
-  grid_ids <- names(results_grid)
-
-  # Convert Grid IDs into Numeric X and Y Coordinates
-  grid_data <- data.frame(
-    Grid_ID = grid_ids,
-    X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
-    Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
-    Mean_Pval = NA
-  )
-
-  # Compute Mean P-value for Each Grid (Averaged Across Variants & Celltypes)
-  for (i in seq_along(grid_ids)) {
-    grid <- grid_ids[i]
-    pvals <- results_grid[[grid]]$pval
-    grid_data$Mean_Pval[i] <- mean(pvals, na.rm = TRUE)  # Average p-values
-  }
-
-  # Define Log-Scaled P-value
-  grid_data$Log_Pval <- -log10(grid_data$Mean_Pval)  # Transform p-values
-
-  # Avoid infinite values: Cap log-transformed values at a max threshold
-  grid_data$Log_Pval[is.infinite(grid_data$Log_Pval)] <- max(grid_data$Log_Pval[!is.infinite(grid_data$Log_Pval)], na.rm = TRUE)
-
-  # Define Custom Color Scale
-  pval_palette <- scale_fill_gradientn(
-    colors = c("red", "grey"),  # Red for significant, grey for non-significant
-    values = scales::rescale(c(-log10(0.05), max(grid_data$Log_Pval, na.rm = TRUE))),  # Scale range
-    limits = c(0, max(grid_data$Log_Pval, na.rm = TRUE)),  # Ensures proper mapping
-    na.value = "white"  # Assigns white for missing values
-  )
-
-  # Plot Log-Scaled P-value Distribution Across the Grid
-  pval_plot <- ggplot(grid_data, aes(x = X_bin, y = Y_bin, fill = Log_Pval)) +
-    geom_tile(color = "white") +  # Grid Cells
-    pval_palette +
-    labs(title = paste0(var_name,"Log-Scaled P-value Distribution Across Spatial Grid"),
-         x = "Grid X", y = "Grid Y", fill = "-log10(P-value)") +
-    theme_minimal() +
-    coord_fixed()  # Keep aspect ratio square
-
-  pval_plot  # Display the plot
-
-
-  return(pval_plot)
 }
 
 #' Plot P-Values from Grid-Based Regression for Each Cell Type
@@ -476,14 +457,20 @@ plot_pval_grid <- function(results_grid, var_name=NULL,grid_size = 20) {
 #' @param results_grid A list containing p-values for each spatial grid.
 #' @param grid_size Number of bins per axis (default = 20 for 20x20 grid).
 #' @param coef_plot_option A string from c("grey","negative"),
+#' @param max_log10p_cap Maximum cap for -log10(p-values) (default = 5).
+#' @param p_thresh Threshold for significance (default = 0.05).
 #' indicating if plotting the negative coeffient p-value as 1 or reversed sign.
 #' Default "grey", setting to p-val = 1 (-log10p-val = 0).
 #'
-#' @return A `ggplot2` object showing p-value distributions for each cell type.
+#' @return A grid plot showing p-value distributions for each cell type.
+#' @import ggplot2 dplyr tidyr cowplot
 #' @export
 #'
 plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20,
-                                        coef_plot_option="grey"){
+                                        coef_plot_option="grey",
+                                        method="Raw",
+                                        max_log10p_cap=5,
+                                        p_thresh=0.05){
 
   # Extract Grid IDs
   grid_ids <- names(results_grid)
@@ -494,14 +481,25 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20,
 
   # Loop Through Each Cell Type and Create a Plot
   for (celltype in all_celltypes) {
-    grid_data <- data.frame(
-      Grid_ID = rep(grid_ids, each = length(results_grid[[1]]$pval[, celltype])),
-      Variant = rep(rownames(results_grid[[1]]$pval), times = length(grid_ids)),
-      X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
-      Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
-      coef = unlist(lapply(results_grid, function(res) res$coef[, celltype])),
-      Pval = unlist(lapply(results_grid, function(res) res$pval[, celltype]))
-    )
+    if(method=="Raw"){
+      grid_data <- data.frame(
+        Grid_ID = rep(grid_ids, each = length(results_grid[[1]]$pval[, celltype])),
+        Variant = rep(rownames(results_grid[[1]]$pval), times = length(grid_ids)),
+        X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
+        Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
+        coef = unlist(lapply(results_grid, function(res) res$coef[, celltype])),
+        Pval = unlist(lapply(results_grid, function(res) res$pval[, celltype]))
+      )
+    }else if (method %in% c("FDR","FWER")){
+      grid_data <- data.frame(
+        Grid_ID = rep(grid_ids, each = length(results_grid[[1]]$pval[, celltype])),
+        Variant = rep(rownames(results_grid[[1]]$pval), times = length(grid_ids)),
+        X_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 2)),
+        Y_bin = as.numeric(sapply(strsplit(grid_ids, "_"), "[[", 3)),
+        coef = unlist(lapply(results_grid, function(res) res$coef[, celltype])),
+        Pval = unlist(lapply(results_grid, function(res) res$adjusted_pval[, celltype]))
+      )
+    }
 
     # Drop missing values (NA p-values)
     grid_data <- grid_data %>% filter(!is.na(Pval))
@@ -514,7 +512,7 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20,
 
     # Transform p-values: -log10 and cap at 4
     grid_data$Log_Pval <- -log10(grid_data$Pval)
-    grid_data$Log_Pval[grid_data$Log_Pval > 4] <- 4  # Cap at 4
+    grid_data$Log_Pval[grid_data$Log_Pval > max_log10p_cap] <- max_log10p_cap  # Cap log value
     if(coef_plot_option=="grey"){
       grid_data$Log_Pval[grid_data$coef < 0] = 0
     }else if(coef_plot_option=="negative"){
@@ -527,15 +525,15 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20,
     if(coef_plot_option=="grey"){
       pval_palette <- scale_fill_gradientn(
         colors = c("darkgrey","grey","red"),   # Grey for low p-values, red for high p-values
-        values = scales::rescale(c(0, -log10(0.05), 4)),  # Map p-values to colors
-        limits = c(0, 4),  # Ensures consistent scale
+        values = scales::rescale(c(0, -log10(p_thresh), max_log10p_cap)),  # Map p-values to colors
+        limits = c(0, max_log10p_cap),  # Ensures consistent scale
         na.value = "white"  # Assigns white for missing values
       )
     }else if(coef_plot_option=="negative"){
       pval_palette <- scale_fill_gradientn(
         colors = c("blue","grey", "red"),   # Grey for low p-values, red for high p-values
-        values = scales::rescale(c(-4, 0, 4)),  # Map p-values to colors
-        limits = c(-4, 4),  # Ensures consistent scale
+        values = scales::rescale(c(-max_log10p_cap, 0, max_log10p_cap)),  # Map p-values to colors
+        limits = c(-max_log10p_cap, max_log10p_cap),  # Ensures consistent scale
         na.value = "white"  # Assigns white for missing values
       )
     }
@@ -553,7 +551,7 @@ plot_pval_grid_per_celltype <- function(results_grid, grid_size = 20,
       p <- ggplot(df_variant, aes(x = X_bin, y = Y_bin, fill = Log_Pval)) +
         geom_tile(color = "white") +  # Grid Cells
         pval_palette +
-        labs(title = paste(variant, "-", celltype),
+        labs(title = paste(variant, "-", celltype, "-",method, " P value"),
              x = "Grid X", y = "Grid Y", fill = "-log10(P-value)") +
         theme_minimal() +
         coord_fixed()  # Keep aspect ratio square

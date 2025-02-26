@@ -17,7 +17,9 @@ celltype_test_grid(
   verbose = F,
   vaf_cellprop = T,
   power = T,
-  disease_celltype = NULL
+  disease_celltype = NULL,
+  method = "Raw",
+  sample_idx = NULL
 )
 }
 \arguments{
@@ -36,6 +38,10 @@ celltype_test_grid(
 \item{permute_num}{Number of permutations for weighted test.}
 
 \item{grid_size}{Number of bins per axis (default = 20 for 20x20 grid).}
+
+\item{method}{P-value correction methods. Options from c("FDR","FWER","Raw").}
+
+\item{sample_idx}{Spots as control for each grid's regression. Usually low diseased celltype proportions and not low coverage spots.}
 
 \item{N}{A matrix of total coverage counts (MT variant x cell).}
 }
