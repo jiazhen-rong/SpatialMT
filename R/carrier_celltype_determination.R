@@ -370,7 +370,7 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
                                test_type = c("linear", "weighted"),
                                permute_num = 1000, grid_size= 20,verbose=F,
                                vaf_cellprop=T,power=T,disease_celltype=NULL,
-                               method="Raw",sample_idx = NULL) {
+                               method="Raw",sample_idx = NULL, min_cell_grid=20) {
   # Find common cells across datasets
   intersect_bc <- intersect(intersect(colnames(N_voi), rownames(Ws)), rownames(spatial_coords))
 
@@ -416,7 +416,7 @@ celltype_test_grid <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
 
     # Subset data for the current grid
     grid_cells <- spatial_coords$Grid_ID == grid
-    if (sum(grid_cells) == 0) next  # Skip empty grids
+    if (sum(grid_cells) < min_cell_grid) next  # Skip empty grids
 
     N_grid <- N_voi[, grid_cells, drop = FALSE]
     vaf_grid <- vaf[, grid_cells, drop = FALSE]

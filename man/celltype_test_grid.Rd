@@ -19,7 +19,8 @@ celltype_test_grid(
   power = T,
   disease_celltype = NULL,
   method = "Raw",
-  sample_idx = NULL
+  sample_idx = NULL,
+  min_cell_grid = 20
 )
 }
 \arguments{
