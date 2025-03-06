@@ -1097,7 +1097,7 @@ celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_te
                               permute_num = 1000, k_neighbors = 100,
                               method = "Raw", sample_idx=NULL,disease_celltype="BE",
                               ratio_threshold=0.03,
-                              plot_vaf_cellprop=F,exclude_plot_idx=NULL) {
+                              vaf_cellprop=F,exclude_plot_idx=NULL) {
   # # Load necessary package for nearest neighbors
   # if (!requireNamespace("FNN", quietly = TRUE)) {
   #   stop("Please install the 'FNN' package to use this function.")

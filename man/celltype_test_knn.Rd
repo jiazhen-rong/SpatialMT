@@ -18,7 +18,7 @@ celltype_test_knn(
   sample_idx = NULL,
   disease_celltype = "BE",
   ratio_threshold = 0.03,
-  plot_vaf_cellprop = F,
+  vaf_cellprop = F,
   exclude_plot_idx = NULL
 )
 }
