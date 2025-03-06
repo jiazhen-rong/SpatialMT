@@ -1097,13 +1097,30 @@ celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_te
                               permute_num = 1000, k_neighbors = 100,
                               method = "Raw", sample_idx=NULL,disease_celltype="BE",
                               ratio_threshold=0.03,
-                              vaf_cellprop=F,exclude_plot_idx=NULL) {
+                              vaf_cellprop=F,exclude_plot_idx=NULL,
+                              p_thresh=0.05,max_log10p_cap=6,coef_plot_option="negative") {
   # # Load necessary package for nearest neighbors
   # if (!requireNamespace("FNN", quietly = TRUE)) {
   #   stop("Please install the 'FNN' package to use this function.")
   # }
 
   #test_type <- match.arg(test_type)
+  # Define Continuous Color Scale
+  if(coef_plot_option=="grey"){
+    pval_palette <- scale_color_gradientn(
+      colors = c("darkgrey","grey","red"),   # Grey for low p-values, red for high p-values
+      values = scales::rescale(c(0, -log10(p_thresh), max_log10p_cap)),  # Map p-values to colors
+      limits = c(0, max_log10p_cap),  # Ensures consistent scale
+      na.value = "white"  # Assigns white for missing values
+    )
+  }else if(coef_plot_option=="negative"){
+    pval_palette <- scale_color_gradientn(
+      colors = c("blue","grey", "red"),   # Grey for low p-values, red for high p-values
+      values = scales::rescale(c(-max_log10p_cap, 0, max_log10p_cap)),  # Map p-values to colors
+      limits = c(-max_log10p_cap, max_log10p_cap),  # Ensures consistent scale
+      na.value = "white"  # Assigns white for missing values
+    )
+  }
 
   # Find common cells across datasets
   common_cells <- intersect(intersect(colnames(N_voi), rownames(Ws)), rownames(spatial_coords_temp))

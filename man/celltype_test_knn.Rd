@@ -19,7 +19,10 @@ celltype_test_knn(
   disease_celltype = "BE",
   ratio_threshold = 0.03,
   vaf_cellprop = F,
-  exclude_plot_idx = NULL
+  exclude_plot_idx = NULL,
+  p_thresh = 0.05,
+  max_log10p_cap = 6,
+  coef_plot_option = "negative"
 )
 }
 \arguments{
