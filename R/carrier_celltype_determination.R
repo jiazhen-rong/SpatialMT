@@ -1043,8 +1043,8 @@ plot_spatial_logP <- function(results,var,p_thresh=0.05, max_log10p_cap=6,coef_p
 
     # Store plot in list only if it has data
     plot_list[[paste(variant, celltype, sep = "_")]] <- p
-    }
   }
+
 
   # Ensure at least one plot exists
   if (length(plot_list) == 0) {
@@ -1228,30 +1228,6 @@ celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_te
                                     pval = pval_mat)
   } # end spot loop
 
-  # # If correction is requested, adjust collected p-values and assign to each spot
-  # if (method != "Raw" && length(all_pvals) > 0) {
-  #   if (method == "FDR") {
-  #     all_pvals_adj <- p.adjust(all_pvals, method = "fdr")
-  #   } else if (method == "FWER") {
-  #     all_pvals_adj <- p.adjust(all_pvals, method = "bonferroni")
-  #   } else {
-  #     all_pvals_adj <- all_pvals
-  #   }
-  #
-  #   index <- 1
-  #   for (spot_id in names(results_list)) {
-  #     n_rows <- nrow(results_list[[spot_id]]$pval)
-  #     n_cols <- ncol(results_list[[spot_id]]$pval)
-  #     total <- n_rows * n_cols
-  #     adj_mat <- matrix(all_pvals_adj[index:(index + total - 1)], nrow = n_rows, ncol = n_cols, byrow = TRUE)
-  #     results_list[[spot_id]]$adjusted_pval <- adj_mat
-  #     index <- index + total
-  #   }
-  # } else {
-  #   for (spot_id in names(results_list)) {
-  #     results_list[[spot_id]]$adjusted_pval <- results_list[[spot_id]]$pval
-  #   }
-  # }
   plot_list  = list()
   # Generate Plots for Each celltype
   for (celltype in celltypes) {
