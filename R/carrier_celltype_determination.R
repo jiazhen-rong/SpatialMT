@@ -762,3 +762,536 @@ compute_gene_program_enrichment <- function(seu, results_grid, spatial_coords_gr
 
   return(list(scores = enrichment_scores, plot = enrichment_plot))
 }
+
+
+# Grid based test
+# Option 1 - move by a small fraction per time
+celltype_test_continuous <- function(celltypes, voi, N_voi, vaf, Ws, spatial_coords,
+                                     test_type = c("linear", "weighted"),
+                                     permute_num = 1000, grid_size = 20, step_fraction = 1/50,
+                                     verbose = FALSE, vaf_cellprop = TRUE, power = TRUE,
+                                     disease_celltype = NULL, method = "Raw", sample_idx = NULL,
+                                     min_cell_grid = 20) {
+  # Find common cells across datasets
+  intersect_bc <- intersect(intersect(colnames(N_voi), rownames(Ws)), rownames(spatial_coords))
+  spatial_coords <- as.data.frame(spatial_coords[intersect_bc, ])
+  colnames(spatial_coords) <- c("X", "Y")
+
+  # Determine overall spatial range and window size
+  x_min <- min(spatial_coords$X)
+  x_max <- max(spatial_coords$X)
+  y_min <- min(spatial_coords$Y)
+  y_max <- max(spatial_coords$Y)
+
+  #win_width_x <- (x_max - x_min) / grid_size
+  #win_width_y <- (y_max - y_min) / grid_size
+
+  # Define step sizes (moving window)
+  #step_x <- win_width_x * step_fraction
+  #step_y <- win_width_y * step_fraction
+  step_x = (x_max - x_min) * step_fraction
+  step_y = (y_max - y_min) * step_fraction
+
+  # Initialize output list
+  results <- list()
+  grid_vaf_cellprop_plot <- list()  # (optional diagnostic plots)
+  if(method != "Raw"){
+    all_pvals <- c()  # to collect raw p-values (if correction is applied externally)
+  }
+
+  window_id <- 1
+  # Loop over continuous window positions
+  for (x_start in seq(x_min, x_max - win_width_x, by = step_x)) {
+    for (y_start in seq(y_min, y_max - win_width_y, by = step_y)) {
+      # Define window boundaries
+      x_end <- x_start + win_width_x
+      y_end <- y_start + win_width_y
+
+      # Identify cells in the current window
+      window_cells <- rownames(spatial_coords)[
+        spatial_coords$X >= x_start & spatial_coords$X <= x_end &
+          spatial_coords$Y >= y_start & spatial_coords$Y <= y_end
+      ]
+      # Skip if fewer than min_cell_grid cells
+      if (length(window_cells) < min_cell_grid) next
+
+      # Create a unique window ID (e.g., "Window_123.45_678.90")
+      win_id <- paste0("Window_", format(x_start, digits = 3), "_", format(y_start, digits = 3))
+
+      # Subset matrices for these cells
+      N_win <- N_voi[, window_cells, drop = FALSE]
+      vaf_win <- vaf[, window_cells, drop = FALSE]
+      Ws_win <- Ws[window_cells, , drop = FALSE]
+
+      # Initialize storage for regression results in this window
+      intercept_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+      coef_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+      pval_df <- Matrix(NA, nrow = length(voi), ncol = length(celltypes))
+      rownames(intercept_df) <- voi
+      colnames(intercept_df) <- celltypes
+      rownames(coef_df) <- voi
+      colnames(coef_df) <- celltypes
+      rownames(pval_df) <- voi
+      colnames(pval_df) <- celltypes
+
+      # Loop over each variant
+      for (j in seq_along(voi)) {
+        var <- voi[j]
+        if(verbose) message(paste("Window", win_id, "Variant:", var))
+        N_j <- N_win[j, ]
+        vaf_j <- vaf_win[j, ]
+
+        # If a set of control spots is desired, determine sample_idx_local
+        if(is.null(sample_idx) && !is.null(disease_celltype)) {
+          sample_idx_local <- intersect(
+            rownames(Ws)[(Ws[, disease_celltype] < 0.3) & !is.na(Ws[, disease_celltype])],
+            colnames(N_voi)[N_voi[var, ] > 1]
+          )
+        } else {
+          sample_idx_local <- sample_idx
+        }
+        # Append control spots if available
+        if(length(sample_idx_local) > 0){
+          N_j <- append(N_j, N_voi[j, sample_idx_local])
+          vaf_j <- append(vaf_j, vaf[j, sample_idx_local])
+        }
+
+        # Loop over each cell type
+        for (k in seq_along(celltypes)) {
+          # Append corresponding control weights
+          Ws_jk <- append(Ws_win[, k], Ws[sample_idx_local, k])
+          data <- data.frame(vaf_j = vaf_j, N_j = N_j, W_sk = Ws_jk)
+
+          # Check for sufficient variation
+          if (length(unique(data$W_sk)) == 1 || length(unique(data$vaf_j)) == 1) {
+            if(verbose) message(paste("Skipping window", win_id, "for", var, "-", celltypes[k], "insufficient variation"))
+            next
+          }
+
+          # Perform regression
+          if (test_type == "linear") {
+            fit <- tryCatch(lm(vaf_j ~ W_sk, data = data), error = function(e) NULL)
+            permute <- FALSE
+          } else if (test_type == "weighted") {
+            fit <- tryCatch(lm(vaf_j ~ W_sk, data = data, weights = sqrt(N_j)), error = function(e) NULL)
+            permute <- TRUE
+          }
+          if (is.null(fit)) {
+            if(verbose) message(paste("Skipping window", win_id, "for", var, "-", celltypes[k], "regression failure"))
+            next
+          }
+          res <- summary(fit)
+          if(nrow(res$coefficients) < 2) {
+            if(verbose) message(paste("Skipping window", win_id, "for", var, "-", celltypes[k], "missing coefficients"))
+            next
+          }
+          intercept_df[j, k] <- res$coefficients[1, 1]
+          coef_df[j, k] <- res$coefficients[2, 1]
+          pval_df[j, k] <- res$coefficients[2, 4]
+          if(test_type != "Raw"){
+            all_pvals <- c(all_pvals, pval_df[j, k])
+          }
+        } # end cell type loop
+        # (Optional: generate diagnostic plots for this variant in the window)
+        if(vaf_cellprop) {
+          # Example: call a function like plot_vaf_cellprop (not provided here)
+          # grid_vaf_cellprop_plot[[win_id]] <- plot_vaf_cellprop(j, vaf_win, Ws_win, ... )
+        }
+      } # end variant loop
+
+      # Store window results
+      results[[win_id]] <- list(intercept = intercept_df,
+                                coef = coef_df,
+                                pval = pval_df)
+      window_id <- window_id + 1
+    } # end y_start loop
+  } # end x_start loop
+
+  ### Optionally, apply p-value adjustment across windows here if desired
+  if(method != "Raw"){
+    all_pvals_adj <- p.adjust(all_pvals, method = ifelse(method == "FDR", "fdr", "bonferroni"))
+    if(verbose) message(paste("Applied", method, "correction"))
+    # For each window, assign adjusted p-values
+    index <- 1
+    for(win_id in names(results)){
+      n_rows <- nrow(results[[win_id]]$pval)
+      n_cols <- ncol(results[[win_id]]$pval)
+      total <- n_rows * n_cols
+      # Fill in a new matrix in row-major order:
+      adj_mat <- matrix(all_pvals_adj[index:(index + total - 1)], nrow = n_rows, ncol = n_cols, byrow = TRUE)
+      results[[win_id]]$adjusted_pval <- adj_mat
+      index <- index + total
+    }
+  }
+
+  return(list(results = results,spatial_coords=spatial_coords,
+              step_size=step_size,grid_size=grids_size))
+}
+
+#' Plot Spatial Distribution of Adjusted P-values on a Signed -log10 Scale
+#'
+#' This function takes a results object returned from a continuous grid-based
+#' celltype test. Each grid (window) is assumed to be named in the format
+#' "Grid_x_y" (where x and y are the grid indices). For each grid, the function
+#' extracts the adjusted p-values and regression coefficients for each variant (rows)
+#' and cell type (columns), computes the signed -log10(p-value) (using the sign of the coefficient),
+#' and then aggregates the data into a continuous heatmap across the spatial grid.
+#'
+#' @param results A list returned from a grid-based celltype test. Each element (grid)
+#'   should contain matrices \code{adjusted_pval} and \code{coef} with row names as variant IDs
+#'   and column names as cell types.
+#'
+#' @return A \code{ggplot2} object showing the spatial distribution of adjusted p-values
+#'   on a signed -log10 scale. Spots with negative coefficients are colored in blue,
+#'   positive coefficients in red, and 0 in grey.
+#'
+#' @examples
+#' \dontrun{
+#'   # Assume 'results' is the object returned by your grid-based test function.
+#'   p <- plot_spatial_logP(results)
+#'   print(p)
+#' }
+#' @import distances
+#' @export
+plot_spatial_logP <- function(results,var,p_thresh=0.05, max_log10p_cap=6,coef_plot_option="negative") {
+  # Get grid IDs; assume they are in the format "Grid_x_y"
+  grid_ids <- names(results$results)
+  if (is.null(grid_ids)) stop("Results object must have named elements corresponding to grid IDs.")
+
+  # Determine overall spatial range and window size
+  spatial_coords_plot=results$spatial_coords
+  x_min <- min(spatial_coords_plot$X)
+  x_max <- max(spatial_coords_plot$X)
+  y_min <- min(spatial_coords_plot$Y)
+  y_max <- max(spatial_coords_plot$Y)
+
+  win_width_x <- (x_max - x_min) / grid_size
+  win_width_y <- (y_max - y_min) / grid_size
+
+  # Define step sizes (moving window)
+  step_x <- win_width_x * step_fraction
+  step_y <- win_width_y * step_fraction
+
+  step_x = (x_max - x_min) * step_fraction
+  step_y = (y_max - y_min) * step_fraction
+
+  # Parse window centers from window IDs
+  window_centers <- do.call(rbind, lapply(grid_ids, function(id) {
+    parts <- unlist(strsplit(id, "_"))
+    if(length(parts) < 3) stop("Window ID format not recognized. Expected format 'Window_x_y'.")
+    x_center <- as.numeric(parts[2]) + step_x/2
+    y_center <- as.numeric(parts[3]) + step_y/2
+    data.frame(window_id = id, x_center = x_center, y_center = y_center)
+  }))
+
+  # For each spot, assign the nearest window (using Euclidean distance)
+  assign_window <- function(spot_x, spot_y, centers_df) {
+    dists <- sqrt((centers_df$x_center - spot_x)^2 + (centers_df$y_center - spot_y)^2)
+    centers_df$window_id[which.min(dists)]
+  }
+
+  spatial_coords_plot$assigned_window <- apply(spatial_coords[, c("X", "Y")], 1, function(row) {
+    assign_window(row[1], row[2], window_centers)
+  })
+
+  # For each spot, extract the adjusted p-value and coefficient for the specified variant and cell type
+  get_spot_value <- function(win_id, results,celltype) {
+    res <- results$results[[win_id]]
+    p_val <- res$pval[, celltype]
+    coef_val <- res$coef[, celltype]
+    # Compute signed -log10(p)
+    signed_logp <- sign(coef_val) * (-log10(p_val))
+    return(signed_logp)
+  }
+
+
+  # Define Continuous Color Scale
+  if(coef_plot_option=="grey"){
+    pval_palette <- scale_color_gradientn(
+      colors = c("darkgrey","grey","red"),   # Grey for low p-values, red for high p-values
+      values = scales::rescale(c(0, -log10(p_thresh), max_log10p_cap)),  # Map p-values to colors
+      limits = c(0, max_log10p_cap),  # Ensures consistent scale
+      na.value = "white"  # Assigns white for missing values
+    )
+  }else if(coef_plot_option=="negative"){
+    pval_palette <- scale_color_gradientn(
+      colors = c("blue","grey", "red"),   # Grey for low p-values, red for high p-values
+      values = scales::rescale(c(-max_log10p_cap, 0, max_log10p_cap)),  # Map p-values to colors
+      limits = c(-max_log10p_cap, max_log10p_cap),  # Ensures consistent scale
+      na.value = "white"  # Assigns white for missing values
+    )
+  }
+
+  plot_list  = list()
+  # Generate Plots for Each Variant
+  for (celltype in celltypes) {
+    # Apply the function to each spot
+    #spatial_coords_plot$signed_logP
+    spatial_coords_plot$signed_logP <- sapply(spatial_coords$assigned_window, function(win_id) {
+      get_spot_value(win_id, results, celltype)
+    })
+    spatial_coords_plot$capped_signed_logP <- pmax(pmin(spatial_coords_plot$signed_logP,
+                                                        max_log10p_cap), -max_log10p_cap)
+
+    p <- ggplot(spatial_coords_plot, aes(x = X, y = Y,color = capped_signed_logP)) +
+      geom_point(size=1) +
+      pval_palette +
+      labs(title = paste(var, "-", celltype, "-", " P value"),
+           x = "X", y = "Y", fill = "-log10(P-value)") +
+      theme_minimal() +
+      coord_fixed()  # Keep aspect ratio square
+
+    # Store plot in list only if it has data
+    plot_list[[paste(variant, celltype, sep = "_")]] <- p
+    }
+  }
+
+  # Ensure at least one plot exists
+  if (length(plot_list) == 0) {
+    message("No valid plots available")
+    return(NULL)
+  }
+
+  # Arrange Plots in a Grid
+  combined_plot <- plot_grid(plotlist = plot_list, ncol = ceiling(sqrt(length(celltypes))))  # Adjust ncol if needed
+
+
+  return(combined_plot)
+}
+
+
+#' Perform Celltype Test Using Nearest Neighbors for Each Spot
+#'
+#' This function performs a celltype test for each spot by selecting its nearest k neighbors
+#' (including itself) and running a linear (or weighted) regression of variant allele frequency
+#' versus cell type weights for each variant of interest. The regression is performed for each cell
+#' type. Optionally, p-values across all tests are adjusted using the specified method.
+#'
+#' @param celltypes A string vector of unique cell types.
+#' @param voi A string vector of variants of interest.
+#' @param N A matrix of total coverage counts (MT variant x cell).
+#' @param vaf A matrix of variant allele frequencies (MT variant x cell).
+#' @param Ws A matrix of cell type weights (cell x celltype).
+#' @param spatial_coords_temp A matrix or data frame of spatial coordinates (cell x 2) with row names as cell IDs.
+#' @param test_type A string specifying the regression test: "linear" or "weighted".
+#' @param permute_num Number of permutations for the weighted test (default 1000).
+#' @param k_neighbors Number of nearest neighbors to use for each spot (default = 100).
+#' @param method P-value correction method. Options are "FDR", "FWER", or "Raw" (default = "Raw").
+#'
+#' @return A list with one element per spot (named by the spot ID). Each element is a list containing:
+#'   \item{intercept}{A matrix of intercept estimates (rows = variants, columns = cell types).}
+#'   \item{coef}{A matrix of regression coefficients.}
+#'   \item{pval}{A matrix of raw p-values.}
+#'   \item{adjusted_pval}{A matrix of adjusted p-values (if method != "Raw"); otherwise, same as raw.}
+#'
+#' @examples
+#' \dontrun{
+#'   # results_knn <- celltype_test_knn(celltypes, voi, N, vaf, Ws, spatial_coords_temp,
+#'   #                                  test_type = "linear", permute_num = 1000,
+#'   #                                  k_neighbors = 100, method = "FDR")
+#' }
+#'
+#' @export
+celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_temp,
+                              test_type = c("linear", "weighted"),
+                              permute_num = 1000, k_neighbors = 100,
+                              method = "Raw", sample_idx=NULL,disease_celltype="BE",
+                              ratio_threshold=0.03,
+                              plot_vaf_cellprop=F,exclude_plot_idx=NULL) {
+  # # Load necessary package for nearest neighbors
+  # if (!requireNamespace("FNN", quietly = TRUE)) {
+  #   stop("Please install the 'FNN' package to use this function.")
+  # }
+
+  #test_type <- match.arg(test_type)
+
+  # Find common cells across datasets
+  common_cells <- intersect(intersect(colnames(N_voi), rownames(Ws)), rownames(spatial_coords_temp))
+  if(length(common_cells) == 0) stop("No common cells found across datasets.")
+
+  N_voi <- N_voi[, common_cells, drop = FALSE]
+  vaf <- vaf[, common_cells, drop = FALSE]
+  Ws <- Ws[common_cells, , drop = FALSE]
+  spatial_coords_temp <- as.data.frame(spatial_coords_temp[common_cells, ])
+  colnames(spatial_coords_temp) = c("X","Y")
+
+  # Use FNN::get.knn to obtain indices of k nearest neighbors for each cell
+  knn_res <- FNN::get.knn(as.matrix(spatial_coords_temp[, c("X", "Y")]), k = k_neighbors)
+
+  results_list <- list()  # will store results for each spot
+  all_pvals <- c()        # to collect p-values for multiple testing correction
+
+  # Loop over each spot (each row in spatial_coords_temp)
+  for (i in seq_len(nrow(spatial_coords_temp))) {
+    if(i%%1000==0 ){
+      print(paste0(i,"/", nrow(spatial_coords_temp)," spots being processed."))
+    }
+    spot_id <- rownames(spatial_coords_temp)[i]
+    neighbor_idx <- knn_res$nn.index[i, ]  # indices of nearest neighbors
+    neighbor_ids <- rownames(spatial_coords_temp)[neighbor_idx]
+    test_ids = c(neighbor_ids,spot_id ) # include the spot for test
+
+    # Subset matrices for these neighbors
+    N_neighbors <- N[, test_ids, drop = FALSE]
+    vaf_neighbors <- vaf[, test_ids, drop = FALSE]
+    Ws_neighbors <- Ws[test_ids, , drop = FALSE]
+
+    # Initialize matrices for this spot's regression results
+    intercept_mat <- matrix(NA_real_, nrow = length(vars), ncol = length(celltypes))
+    coef_mat <- matrix(NA_real_, nrow = length(vars), ncol = length(celltypes))
+    pval_mat <- matrix(NA_real_, nrow = length(vars), ncol = length(celltypes))
+    rownames(intercept_mat) <- vars
+    colnames(intercept_mat) <- celltypes
+    rownames(coef_mat) <- vars
+    colnames(coef_mat) <- celltypes
+    rownames(pval_mat) <- vars
+    colnames(pval_mat) <- celltypes
+
+    # Loop over each variant
+    for (j in seq_along(vars)) {
+      var <- vars[j]
+      N_j <- N_neighbors[j, ]
+      vaf_j <- vaf_neighbors[j, ]
+      Ws_j = Ws_neighbors
+
+      if(sum(vaf_j > 0)/length(vaf_j) < ratio_threshold){ # excluding outliers
+        intercept_mat[j, ] <- 0
+        coef_mat[j, ] <- 0
+        pval_mat[j, ] <- 1
+        next
+      }
+
+      # If a set of control spots is desired, determine sample_idx_local
+      if(is.null(sample_idx) && !is.null(disease_celltype)) {
+        sample_idx_local <- intersect(
+          rownames(Ws)[(Ws[, disease_celltype] < 0.3) & !is.na(Ws[, disease_celltype])],
+          colnames(N_voi)[N_voi[var, ] > 1]
+        )
+      } else {
+        sample_idx_local <- sample_idx
+      }
+
+      #print(paste0(length(sample_idx_local), " paired control spots."))
+      # Append control spots if available
+      if(length(sample_idx_local) > 0){
+        N_j <- append(N_j, N_voi[j, sample_idx_local])
+        vaf_j <- append(vaf_j, vaf[j, sample_idx_local])
+        Ws_j = rbind(Ws_neighbors,Ws[sample_idx_local,])
+      }
+
+      for (k in seq_along(celltypes)) {
+        data_df <- data.frame(vaf_j = vaf_j,
+                              N_j = N_j,
+                              W_sk = Ws_j[, celltypes[k]])
+
+        # Check for variation in predictors
+        if (length(unique(data_df$W_sk)) == 1 || length(unique(data_df$vaf_j)) == 1) {
+          next
+        }
+
+        # Run regression (linear or weighted)
+        if (test_type == "linear") {
+          fit <- tryCatch(lm(vaf_j ~ W_sk, data = data_df), error = function(e) NULL)
+        } else if (test_type == "weighted") {
+          fit <- tryCatch(lm(vaf_j ~ W_sk, data = data_df, weights = sqrt(N_j)), error = function(e) NULL)
+        }
+
+        if (is.null(fit)) next
+
+        res <- summary(fit)
+        if (nrow(res$coefficients) < 2) next
+
+        intercept_mat[j, k] <- res$coefficients[1, 1]
+        coef_mat[j, k] <- res$coefficients[2, 1]
+        pval_mat[j, k] <- res$coefficients[2, 4]
+
+        all_pvals <- c(all_pvals, pval_mat[j, k])
+      } # end celltype loop
+
+      # plot vaf vs celltype diagnostic for grid
+      if(vaf_cellprop){
+        intercept=intercept_mat[j,]
+        coef=coef_mat[j,]
+        pval=pval_mat[j,]
+        #print(pval)
+        temp_plot_df = as.data.frame(cbind(spatial_coords_temp[c(test_ids,sample_idx_local),c("X","Y")],
+                             vaf_j,N_j,Ws_j))
+        colnames(temp_plot_df) = c("X","Y",var,paste0(var,"_cov"),celltypes)
+        grid_vaf_cellprop_plot[[grid]] = plot_vaf_cellprop(j,
+                             vaf[,c(test_ids,sample_idx_local),drop=F],Ws_j,temp_plot_df,
+                            intercept,coef,pval,permute,return_plot=T)
+      }
+    } # end variant loop
+
+    results_list[[spot_id]] <- list(intercept = intercept_mat,
+                                    coef = coef_mat,
+                                    pval = pval_mat)
+  } # end spot loop
+
+  # # If correction is requested, adjust collected p-values and assign to each spot
+  # if (method != "Raw" && length(all_pvals) > 0) {
+  #   if (method == "FDR") {
+  #     all_pvals_adj <- p.adjust(all_pvals, method = "fdr")
+  #   } else if (method == "FWER") {
+  #     all_pvals_adj <- p.adjust(all_pvals, method = "bonferroni")
+  #   } else {
+  #     all_pvals_adj <- all_pvals
+  #   }
+  #
+  #   index <- 1
+  #   for (spot_id in names(results_list)) {
+  #     n_rows <- nrow(results_list[[spot_id]]$pval)
+  #     n_cols <- ncol(results_list[[spot_id]]$pval)
+  #     total <- n_rows * n_cols
+  #     adj_mat <- matrix(all_pvals_adj[index:(index + total - 1)], nrow = n_rows, ncol = n_cols, byrow = TRUE)
+  #     results_list[[spot_id]]$adjusted_pval <- adj_mat
+  #     index <- index + total
+  #   }
+  # } else {
+  #   for (spot_id in names(results_list)) {
+  #     results_list[[spot_id]]$adjusted_pval <- results_list[[spot_id]]$pval
+  #   }
+  # }
+  plot_list  = list()
+  # Generate Plots for Each celltype
+  for (celltype in celltypes) {
+    # For each spot (each element in results_list), extract the adjusted p-value and coefficient for the given variant and cell type.
+    spot_values <- sapply(names(results_list), function(spot_id) {
+      res <- results_list[[spot_id]]
+      #if (is.null(res)) return(NA)
+      #if (!(variant %in% rownames(res$adjusted_pval))) return(NA)
+      #if (!(ct %in% colnames(res$adjusted_pval))) return(NA)
+
+      p_val <- res$pval[, celltype]
+      coef_val <- res$coef[, celltype]
+      # Compute signed -log10(adjusted p)
+      signed_logp <- sign(coef_val) * (-log10(p_val))
+      return(signed_logp)
+
+    })
+    spatial_coords_temp$signed_logP = spot_values
+    spatial_coords_temp$capped_signed_logP =  pmax(pmin(spot_values, max_log10p_cap),
+                                                   -max_log10p_cap)
+    # exclude spots with low diseased celltype proportions
+    final_plot_temp = spatial_coords_temp
+    final_plot_temp[exclude_plot_idx,"capped_signed_logP"] = 0
+
+    p <- ggplot(final_plot_temp, aes(x = X, y = Y,color = capped_signed_logP)) +
+      geom_point(size=0.1) +
+      pval_palette +
+      labs(title = paste(var, "-", celltype, "-", " P value"),
+           x = "X", y = "Y", fill = "-log10(P-value)") +
+      theme_minimal() +
+      coord_fixed()  # Keep aspect ratio square
+
+    # Store plot in list only if it has data
+    plot_list[[paste(var, celltype, sep = "_")]] <- p
+  }
+
+  # Arrange Plots in a Grid
+  combined_plot <- plot_grid(plotlist = plot_list, ncol = ceiling(sqrt(length(celltypes))))  # Adjust ncol if needed
+
+  return(list(results=results_list,
+              spatial_coords = spatial_coords_temp,
+              combined_plot=combined_plot))
+}

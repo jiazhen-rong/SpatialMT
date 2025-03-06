@@ -37,7 +37,10 @@ PlotBayesFactor <- function(var, N, af.dm, spatial_coords,BF_cap=3,plot=F) {
       # Second layer: Highlight BF > 1 with larger points
       geom_point(data = subset(plot_df, BF > 1),
                  aes(color = BF_capped), size = 1) +
-      scale_color_gradientn(colors = c("grey", "red")) +
+      #scale_color_gradientn(colors = c("grey", "red")) +
+      scale_color_gradientn(colors = c("blue", "grey", "red"),
+                            values = c(0, 0.5, 1),  # Ensure 0 is at 0.5 position
+                            limits = c(-3, 3)) +
       scale_size_continuous(range = c(0, 5)) +  # Adjust size range
       theme_minimal() +
       ggtitle(paste0("Bayes Factor ", var)) +
@@ -45,6 +48,14 @@ PlotBayesFactor <- function(var, N, af.dm, spatial_coords,BF_cap=3,plot=F) {
     print(p)
   }
   return(BF)
+}
+
+
+# Transformation function mapping raw BF to [0, 1]
+transformBF <- function(BF, k = 2, BF_mid = 0) {
+  # BF_mid is the midpoint: BF == BF_mid gives a score of 0.5.
+  score <- 1 / (1 + exp(-k * (BF - BF_mid)))
+  score
 }
 
 #' Plot Heatmap of Bayes Factor for Variants of Interest
@@ -89,16 +100,24 @@ PlotBayesFactorHeatmap <- function(voi, N, af.dm, spatial_coords, BF_cap = 3,
     # compute sigmoid function so final value between -1 to 1.
     BF_matrix <- sapply(voi, function(var) {
       BF = rep(NA,dim(N)[2]); names(BF) = colnames(N)
-      BF[N[var,] ==0] = 0 # N=0, X=0
+      p0 <- mean(af.dm[var, ], na.rm = TRUE)
+      # Case 1: N=0, X=0
+      BF[N[var,] ==0] = 0
       X_var = round(N[var, ]*af.dm[var,])
-      # X>0, N>0
-      spot_idx = (X_var > 0) & (N[var,]>0)
-      BF <- log10(dbinom(X_var, size = N[var, ], prob = af.dm[var, ])) -
-        log10(dbinom(X_var, size = N[var, ], prob = p0))
+      # Case 2: X>0, N>0, positive evidence
+      spot_idx = ((X_var > 0) & (N[var,]>0))
+      BF[spot_idx] <- log10(dbinom(X_var[spot_idx],
+                                   size = N[var, spot_idx],
+                                   prob = af.dm[var, spot_idx])) -
+        log10(dbinom(X_var[spot_idx],
+                     size = N[var, spot_idx],
+                     prob = p0))
       # the sigmoid transformation convert to 0~1
       # X=0, N > 0
       # the sigmoid transformation convert to -1~0
-
+      # Case 3:
+      neg_spot_idx = ((X_var == 0) & (N[var,]>0))
+      BF[neg_spot_idx ] <- -log10(N[var,neg_spot_idx] + 1)
       BF
     })
     BF_df <- as.data.frame(BF_matrix)
@@ -155,15 +174,24 @@ PlotBayesFactorHeatmap <- function(voi, N, af.dm, spatial_coords, BF_cap = 3,
 
     # --- Plotting ---
     # Now plot the ordered matrix without further clustering.
-    pheatmap(
+    # Create color breaks. Here we use 101 breaks so that our 100 colors map well.
+    my_breaks <- seq(-BF_cap, BF_cap, length.out = 100)
+
+    # Create a palette for the negative side (blue to grey) and for the positive side (grey to red)
+    neg_colors <- colorRampPalette(c("blue", "grey"))(50)
+    pos_colors <- colorRampPalette(c("grey", "red"))(50)
+    my_colors <- c(neg_colors, pos_colors)
+
+    hm2=pheatmap(
       t(as.matrix(BF_ordered)),
       cluster_rows = FALSE,
       cluster_cols = FALSE,
       labels_col = F,
-      color = colorRampPalette(c("grey", "red"))(50),
+      color = my_colors,
       main = "Bayes Factor Heatmap",
       angle_col = 90
     )
+    print(hm2)
 
   }else{
     # Perform hierarchical clustering on spots
@@ -176,7 +204,8 @@ PlotBayesFactorHeatmap <- function(voi, N, af.dm, spatial_coords, BF_cap = 3,
       cluster_rows = FALSE,           # Already clustered, no need for pheatmap clustering
       cluster_cols = TRUE,            # Cluster variants (columns)
       labels_row=F,
-      color = colorRampPalette(c("grey","red"))(50),
+      color = my_colors,
+      breaks = my_breaks,
       main = "Bayes Factor Heatmap",
       angle_col = 90
     )
