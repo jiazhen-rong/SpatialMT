@@ -1294,7 +1294,6 @@ celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_te
 #'
 #' This function permutes the VAF and celltype proportion relationships.
 #'
-#'
 #' @param celltypes A string vector of unique cell types.
 #' @param voi A string vector of variants of interest.
 #' @param N A matrix of total coverage counts (MT variant x cell).
@@ -1314,7 +1313,7 @@ celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_te
 #'
 #' @examples
 #' \dontrun{
-#'   # results_knn <- celltype_test_knn(celltypes, voi, N, vaf, Ws, spatial_coords_temp,
+#'   # results_knn <- celltype_test_knn_permute(celltypes, voi, N, vaf, Ws, spatial_coords_temp,
 #'   #                                  test_type = "linear", permute_num = 1000,
 #'   #                                  k_neighbors = 100, method = "FDR")
 #' }
