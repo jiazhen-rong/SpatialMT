@@ -1092,8 +1092,9 @@ plot_spatial_logP <- function(results,var,p_thresh=0.05, max_log10p_cap=6,coef_p
 #' }
 #'
 #' @export
+#' @import cowplot
 celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_temp,
-                              test_type = c("linear", "weighted"),
+                              test_type = c("linear", "weighted"),permute=F,
                               permute_num = 1000, k_neighbors = 100,
                               method = "Raw", sample_idx=NULL,disease_celltype="BE",
                               ratio_threshold=0.03,

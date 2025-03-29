@@ -12,6 +12,7 @@ celltype_test_knn(
   Ws,
   spatial_coords_temp,
   test_type = c("linear", "weighted"),
+  permute = F,
   permute_num = 1000,
   k_neighbors = 100,
   method = "Raw",
