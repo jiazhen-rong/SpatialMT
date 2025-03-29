@@ -1149,7 +1149,7 @@ celltype_test_knn <- function(celltypes, vars, N_voi, vaf, Ws, spatial_coords_te
     test_ids = c(neighbor_ids,spot_id ) # include the spot for test
 
     # Subset matrices for these neighbors
-    N_neighbors <- N[, test_ids, drop = FALSE]
+    N_neighbors <- N_voi[, test_ids, drop = FALSE]
     vaf_neighbors <- vaf[, test_ids, drop = FALSE]
     Ws_neighbors <- Ws[test_ids, , drop = FALSE]
 
