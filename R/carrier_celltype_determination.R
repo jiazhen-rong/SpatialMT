@@ -326,7 +326,7 @@ power_analysis_all <- function(voi=NULL,celltypes=NULL,Ws=NULL,N=NULL,vaf=NULL,X
         calc_power(beta,Nj,Wj,vaf_j,alpha,n_sim,verbose=F)
       })
       names(power_results) = beta_grid
-      beta_list[paste0(voi[j],"_",celltypes[k])] <- power_results
+      beta_list[[paste0(voi[j],"_",celltypes[k])]] <- power_results
 
       if(plot){
         plot(beta_grid,power_results,type="l",col="blue",lwd=2,
