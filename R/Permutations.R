@@ -60,6 +60,7 @@ celltype_test_knn_permute <- function(celltypes, vars, N_voi, vaf, Ws, spatial_c
   N_voi <- N_voi[, common_cells, drop = FALSE]
   vaf <- vaf[, common_cells, drop = FALSE]
   Ws <- Ws[common_cells, , drop = FALSE]
+  spatial_coords_temp = spatial_coords_temp[common_cells,]
 
   # break the relationship between vaf (X,N remains the same) and Ws
   sample_idx = sample(dim(N_voi)[2])

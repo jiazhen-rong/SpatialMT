@@ -1,6 +1,8 @@
-#  helper functions of the spatial mito model
+#' helper functions of the spatial mito model
+#' plotting VAF vs celltype proportions, colored by coverage
+#' @export
+#'
 
-# plotting VAF vs celltype proportions, colored by coverage
 plot_vaf_cellprop <- function(i,af.dm,norm_weights,plot_df,intercept,coef,pval,permute=F,return_plot=F){
   if(permute==T){
     p_str = "permute_p"
