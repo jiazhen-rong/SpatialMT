@@ -15,7 +15,7 @@ celltype_test_knn_permute(
   permute_num = 1000,
   k_neighbors = 100,
   method = "Raw",
-  sample_idx = NULL,
+  sample_idx_local = NULL,
   disease_celltype = "BE",
   ratio_threshold = 0.03,
   vaf_cellprop = F,
