@@ -1,5 +1,7 @@
 # SpatialMT
-This GitHub contains the beta version of the Spatial Mitochondrial Variant Test (SpatialMT) package.
+This GitHub contains the beta version of the Spatial Mitochondrial Variant Test - SUMMIT package.
+
+All the analysis codes are within the Analysis Folder.
 
 For Single-cell enriched mitochondrial variant related test and filtering, please view our previous package [scmtVT](https://github.com/jiazhen-rong/scmtVT).
 
