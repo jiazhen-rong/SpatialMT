@@ -26,7 +26,9 @@ An example of how to run the  test is shown below:
 ### Citations
 If you used the package in your research, please cite:
 
-*TBD*
+***Mitochondrial clone tracing within spatially intact human tissues** <br/>
+Sydney A Bracht, Jiazhen Rong, Rodrigo A Gier, Maureen DeMarshall, Hailey Golden, Diya Dhakal, Jayne C McDevitt, Feiyan Mo, Emma E Furth, Alexandra Strauss Starling, Amanda B Muir, Gary W Falk, Bryson W Katona, Ben Z Stanger, Nancy R Zhang, Sydney M Shaffer <br/>
+bioRxiv 2025.07.11.664452; doi: https://doi.org/10.1101/2025.07.11.664452* <br/>
 
 ### Contributors/Maintainers
 Sydney Bracht & Jiazhen Rong
