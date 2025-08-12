@@ -18,11 +18,6 @@ or directly copy from git:
 ``` linux
 git clone https://github.com/jiazhen-rong/SpatialMT.git
 ```
-### Tutorial
-
-An example of how to run the  test is shown below:
-- [Pre-processing Steps (To be Uploaded, A200_s6 as an example, check script from Sydney)](TBD)
-- [Tutorial for ST data with enriched mitochondrial mutations on a Barrett's esophagus sample (To be Uploaded, A200_s6 as an example)](TBD)
 
 ### Citations
 If you used the package in your research, please cite:
