@@ -1,7 +1,9 @@
 # SUMMIT Overview
 This GitHub contains the beta version of the Spatial Mitochondrial Variant Test - **SUMMIT** package.
 
-All the analysis codes are within the Analysis folder. All the results in our paper was based on SUMMIT v1.0.0. 
+All the analysis codes are within the [Analysis](https://github.com/jiazhen-rong/SpatialMT/tree/main/Analysis) folder. 
+
+All the results in our paper was based on SUMMIT v1.0.0. 
 
 For Single-cell enriched mitochondrial variant related test and filtering, please view our previous package [scmtVT](https://github.com/jiazhen-rong/scmtVT).
 
@@ -17,11 +19,11 @@ The software was tested on:
  - Rocky Linux 8.10 (Green Obsidian)
    
 #### R Dependencies
-```SUMMIT``` depends on the following packages:
+```SUMMIT``` depends on the following R packages:
 
 ``` r
 Matrix, ggplot2, dplyr, tidyr, cowplot, distances, igraph, biglm,
-pheatmap, ComplexHeatmap, circlize, 
+pheatmap, ComplexHeatmap, circlize 
 ```
 
 ## Installation
@@ -37,6 +39,10 @@ or directly copy from git:
 ``` linux
 git clone https://github.com/jiazhen-rong/SpatialMT.git
 ```
+
+## Tutorial
+
+ - [SUMMIT on Barrett's Esophagus Sample with Localized Clones](https://github.com/jiazhen-rong/SpatialMT/tree/main/examples) (~30 minutes)
 
 ## Citations
 If you used the package in your research, please cite:
