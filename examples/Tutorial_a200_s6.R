@@ -9,13 +9,12 @@ library(SummarizedExperiment)
 library(Matrix)
 
 # load data (X - alternate allele counts, N - total counts, Ws - celltype)
-setwd("~/nzhanglab/project/jrong/mito_LT/scripts/our_model/example_data/")
-source("210215_FunctionsGeneral.R") # from MAESTER paper
-source("../diagnostic_plot.R")
-
-slide_name = "a200_s6"
+setwd("~/Documents/GitHub/SpatialMT/examples/")
+source("utility_prev_literature/210215_FunctionsGeneral.R") # from MAESTER paper
+#source("../diagnostic_plot.R")
 
 # (1) mitochondrial data
+#slide_name = "a200_s6"
 maegatk.rse = readRDS("maegatk_mr1.rds") # master result object
 af.dm <- data.matrix(computeAFMutMatrix(maegatk.rse))*100 # all possible mitochodnrial mutations' (4* 16K) x spot' VAF
 # prepare coverage N, # spot x each chrM location's (16K) coverage
@@ -36,7 +35,7 @@ N = N[,colnames(af.dm)]
 # remove "-1" in the spot barcodes
 colnames(af.dm) = sapply(strsplit(colnames(af.dm),"-"),"[[",1)
 colnames(N) = sapply(strsplit(colnames(N),"-"),"[[",1)
-# spatial coordinates 
+# spatial coordinates
 spatial_coords = read.csv(paste0(slide_name,"_MatchedBeadLocation.csv"))
 rownames(spatial_coords) =spatial_coords[,1]; spatial_coords[,1] <- NULL
 # Load celltype ratios
@@ -44,8 +43,8 @@ rownames(spatial_coords) =spatial_coords[,1]; spatial_coords[,1] <- NULL
 rctd_ratio_major = readRDS("rctd_ratio_major.rds")
 rctd_ratio_be = readRDS("rctd_ratio_be.rds")
 # normalize the weights to sum to 1 in each spot
-rctd_ratio_major = as.data.frame(as.matrix(normalize_weights(rctd_ratio_major))) 
-rctd_ratio_be = as.data.frame(as.matrix(normalize_weights(rctd_ratio_be))) 
+rctd_ratio_major = as.data.frame(as.matrix(normalize_weights(rctd_ratio_major)))
+rctd_ratio_be = as.data.frame(as.matrix(normalize_weights(rctd_ratio_be)))
 
 # (2) Determine celltype by linear regression
 # choose a celltype ratio to work on
@@ -163,8 +162,8 @@ saveRDS(moran_i_list,"voi_moran_i_list.rds")
 mI <- unlist(lapply(voi,function(x){(moran_i_list[[x]])$observed}))
 names(mI) <- voi
 sort(mI,decreasing = T)[1:5]
-#15642_T>A     14005_T>A      8588_T>G      6991_T>A     13025_A>C 
-#-0.0004701676 -0.0004945259 -0.0005914952 -0.0007012713 -0.0007636173 
+#15642_T>A     14005_T>A      8588_T>G      6991_T>A     13025_A>C
+#-0.0004701676 -0.0004945259 -0.0005914952 -0.0007012713 -0.0007636173
 
 png("moranI_voi.png",width=500,height=500)
 hist(mI,main="a200_S6 Moran's I")

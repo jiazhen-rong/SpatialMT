@@ -1,6 +1,6 @@
 Package: SpatialMT
 Title: Statistical test for ST data with Enriched Mitochondria
-Version: 0.5
+Version: 1.0.0
 Authors@R: 
     person("Jiazhen/JoJo", "Rong", , "Rong@Pennmedicine.upenn.edu", role = c("aut", "cre"),
            comment = c(ORCID = 0000-0002-7884-5973))
