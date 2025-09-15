@@ -25,6 +25,7 @@ pheatmap, ComplexHeatmap, circlize,
 ```
 
 ## Installation
+The installation shall take < 5 minutes.
 
 To install the package, please use the following commands:
 ``` r
