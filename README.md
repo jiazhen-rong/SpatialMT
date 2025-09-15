@@ -5,18 +5,18 @@ All the analysis codes are within the Analysis folder. All the results in our pa
 
 For Single-cell enriched mitochondrial variant related test and filtering, please view our previous package [scmtVT](https://github.com/jiazhen-rong/scmtVT).
 
-# System Requirements
-## Hardware requirements
+## System Requirements
+### Hardware requirements
 ```SUMMIT``` package requires a standard computer with enough RAM.
 
-## Software requirements
-### OS Requirements
+### Software requirements
+#### OS Requirements
 The software was tested on:
 
  - MacOS Sequoia (15.6.1)
  - Rocky Linux 8.10 (Green Obsidian)
    
-### R Dependencies
+#### R Dependencies
 ```SUMMIT``` depends on the following packages:
 
 ``` r
@@ -24,7 +24,7 @@ Matrix, ggplot2, dplyr, tidyr, cowplot, distances, igraph, biglm,
 pheatmap, ComplexHeatmap, circlize, 
 ```
 
-# Installation
+## Installation
 
 To install the package, please use the following commands:
 ``` r
@@ -37,15 +37,15 @@ or directly copy from git:
 git clone https://github.com/jiazhen-rong/SpatialMT.git
 ```
 
-# Citations
+## Citations
 If you used the package in your research, please cite:
 
 ***Mitochondrial clone tracing within spatially intact human tissues** <br/>
 Sydney A Bracht, Jiazhen Rong, Rodrigo A Gier, Maureen DeMarshall, Hailey Golden, Diya Dhakal, Jayne C McDevitt, Feiyan Mo, Emma E Furth, Alexandra Strauss Starling, Amanda B Muir, Gary W Falk, Bryson W Katona, Ben Z Stanger, Nancy R Zhang, Sydney M Shaffer <br/>
 bioRxiv 2025.07.11.664452; doi: https://doi.org/10.1101/2025.07.11.664452* <br/>
 
-# Contributors/Maintainers
+## Contributors/Maintainers
 Sydney Bracht & Jiazhen Rong
 
-# License
+## License
 Apache License 2.0
