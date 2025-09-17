@@ -367,33 +367,136 @@ example</h1>
 <div id="step-1-load-example-data" class="section level3">
 <h3>Step 1: Load example data</h3>
 <p>In this step, we want to load data required for
-<strong><em>SUMMIT</em></strong>.</p>
-<p>We have example data from a Barrett’s Esophagus patient prepared for
-demonstration. Please download this example data via DropBox.</p>
-<p>To prepare your own data to align with SUMMIT input format:</p>
+<strong><em>SUMMIT</em></strong>. Our example data in this tutorial
+comes from a Barrett’s Esophagus patient, and is available at <a href="https://www.dropbox.com/scl/fo/sx6tfijkkapsvo4036xhj/AB9NjFsN6yz5xYyz-CpAgKk?rlkey=kf6blkddohhd7gdr96q85kf21&amp;st=sybpv5mx&amp;dl=0">DropBox</a>.
+Please download the files and move them to the
+<strong>SpatialMT/examples/example_data</strong> folder or a specificed
+path.</p>
+<p>To prepare your own data as SUMMIT input format:</p>
 <ul>
 <li><p>From fastq/bam files to MT alternative allele count matrix
 <strong>X</strong> and coverage matrix <strong>N</strong>, please check
 <a href="https://github.com/caleblareau/maegatk">maegatk</a> [1] for
 pre-processing.</p></li>
-<li><p>For filtering the initial list of variant of interest, please
-check <a href="https://github.com/caleblareau/maegatk">maegatk</a> [1]
-for pre-processing. We also have analysis scripts under the Analysis
+<li><p>For filtering the initial list of variant of interest (voi),
+please check <a href="https://github.com/caleblareau/maegatk">maegatk</a> [1] for
+pre-processing. Or the variants could be through differnt QCs of
+filtering. We also have analysis scripts under the Analysis
 folder.</p></li>
 <li><p>For celltype ratio <strong><em>W</em></strong>, we utilized <a href="https://github.com/dmcable/spacexr">RCTD</a> [2] for celltype
 decomposition.</p></li>
 </ul>
-<pre class="r"><code># load data (X - alternate allele counts, N - total counts, Ws - celltype)</code></pre>
+<p>First let’s load relevant packages and functions. The
+<strong>210215_FunctionsGeneral.R</strong> is a utility function of
+MAESTER [1] to load the pre-processed variant count matrix.</p>
+<pre class="r"><code>library(SpatialMT)
+library(grid)
+library(gridExtra)
+library(spacexr) # RCTD
+library(dplyr)
+library(ggplot2)
+library(Seurat)
+
+setwd(&quot;~/Documents/GitHub/SpatialMT/examples/&quot;)
+source(&quot;utility_prev_literature/210215_FunctionsGeneral.R&quot;) # from MAESTER paper</code></pre>
+<p>Load the Spatial Transcriptomics (ST) data:</p>
+<pre class="r"><code># load Spatial Transcriptomics/Curio Seeker data
+seu &lt;-readRDS(&quot;example_data/a200_s6_final.rds&quot;)
+# obtain spatial coordinates
+spatial_coords = seu@reductions$SPATIAL@cell.embeddings</code></pre>
+<p>Load the mtDNA data of alternative allele count matrix and coverage
+matrix from MAESTER, and variant of interest:</p>
+<pre class="r"><code># load MT data
+maegatk.rse = readRDS(&quot;example_data//maegatk_mr1.rds&quot;)
+# all possible mitochodnrial mutations&#39; (4* 16K) x spot&#39; VAF
+af.dm &lt;- data.matrix(computeAFMutMatrix(maegatk.rse)) # 0-1 VAF scale
+# prepare coverage N, # spot x each chrM location&#39;s (16K) coverage
+counts=as.matrix(maegatk.rse @assays@data$coverage)
+rownames(counts) = 1:nrow(counts);
+colnames(counts) = maegatk.rse @colData@rownames
+N=as(as.matrix(counts[sapply(strsplit(rownames(af.dm),&quot;_&quot;),&quot;[[&quot;,1),]), &quot;sparseMatrix&quot;)
+rownames(N) &lt;- rownames(af.dm)
+
+# load variant of interest
+voi =  c(&quot;3054_G&gt;C&quot;,&quot;15777_G&gt;C&quot;,&quot;3071_T&gt;C&quot;)
+
+# subset to matrix to be much smaller sizes
+af.dm=af.dm[voi,]
+N = N[voi,]
+N = N[,colnames(af.dm)]</code></pre>
+<p>Load decomposed cell type ratio from tools like RCTD:</p>
+<ul>
+<li>For this sample, we used the <a href="https://www.biorxiv.org/content/10.1101/2023.01.26.525564v2">Barrett’s
+Esaphugus scRNA-Seq atlas</a> [3] as the reference dataset for cell type
+decomposition. For your own dataset, public atlas of the same disease
+type could be used to obtain cell type ratio matrix
+<strong><em>W</em></strong>.</li>
+</ul>
+<pre class="r"><code># Load RCTD ratio
+rctd_ratio_major = readRDS(&quot;example_data//RCTD_res.rds&quot;)
+# normalize the celltype weights to sum to 1 in each spot
+rctd_ratio_major = as.data.frame(as.matrix(normalize_weights(rctd_ratio_major@results$weights))) 
+rownames(rctd_ratio_major) = paste0(rownames(rctd_ratio_major),&quot;-1&quot;)
+Ws = rctd_ratio_major[colnames(af.dm),]
+celltypes= colnames(Ws)</code></pre>
 </div>
 <div id="step-2-global-cell-type-test" class="section level3">
 <h3>Step 2: Global Cell Type Test</h3>
-<pre class="r"><code># output test results
+<p>The global celltype test could be performed with fucntion
+<code>celltype_test</code>:</p>
+<p>The raw p-values are adjusted for multiple hypothesis testing
+(#variants x #celltypes), by specifying the <code>method=&quot;FDR&quot;</code>
+parameter. - We also have permutation based (default 1000 permutations,
+with p-val at 0.001 resolution), coverage-weighted linear regression, by
+setting <code>test_type = &quot;weighted&quot;</code>.</p>
+<pre class="r"><code># To save results
+save_path = paste0(&quot;example_data/results&quot;)
+dir.create(save_path)
 
-# plot the bar plots</code></pre>
+# global celltype test
+res_lg = celltype_test(celltypes = celltypes,voi=voi,N=N,
+                       vaf=af.dm,Ws=Ws,spatial_coords = spatial_coords,
+                       test_type = &quot;linear&quot;,plot=T,
+                       save_path=save_path,method=&quot;FDR&quot;,
+                       figure_height = 15, figure_width = 15)</code></pre>
+<p>To perform paired power analysis:</p>
+<pre class="r"><code>beta_list = power_analysis_all(voi=voi,celltypes = celltypes,Ws=Ws,
+                               N=N,vaf=af.dm,X=NULL,
+                               sample_num=100,alpha=0.05,n_sim=10,
+                               beta_threshold =0.5,plot=T,save_path = save_path)</code></pre>
 </div>
 <div id="step-3-localized-cell-type-test" class="section level3">
 <h3>Step 3: Localized Cell Type Test</h3>
-<pre class="r"><code># load data (X - alternate allele counts, N - total counts, Ws - celltype)</code></pre>
+<p>The localized celltype test could be performed with fucntion
+<code>celltype_test_knn</code>:</p>
+<ul>
+<li>The spot-level p-values could be adjusted by FDR for multiple
+hypothesis corrections.</li>
+</ul>
+<pre class="r"><code># load data (X - alternate allele counts, N - total counts, Ws - celltype)
+common_cells &lt;- intersect(intersect(colnames(N), rownames(Ws)), 
+                          rownames(spatial_coords))
+Ws = Ws[common_cells,]
+spatial_coords=spatial_coords[common_cells,]
+
+exclude_plot_idx = rownames(Ws)[Ws$BE &lt; 0.25]
+
+pdf(paste0(save_path,&quot;/spot_level_significance.pdf&quot;),width=15,height=15)
+for(var in voi){
+  print(var)
+  sample_idx = intersect(rownames(Ws)[(Ws$BE &lt; 0.25)],
+                         colnames(N)[N[var,] &gt; 1])
+  result_var=celltype_test_knn(celltypes,vars=c(var),
+                               N_voi=N[var,,drop=F],vaf=af.dm[var,,drop=F],
+                               Ws,spatial_coords,
+                               test_type=&quot;linear&quot;,k_neighbors=100,
+                               method=&quot;Raw&quot;,sample_idx=sample_idx,disease_celltype = &quot;BE&quot;,
+                               ratio_threshold=0.02,exclude_plot_idx = exclude_plot_idx,
+                               vaf_cellprop = F,coef_plot_option = &quot;negative&quot;)
+  saveRDS(result_var,paste0(save_path,&quot;/&quot;,var,&quot;_spot_test.rds&quot;))
+  print(result_var$combined_plot)
+}
+dev.off()</code></pre>
 </div>
 <div id="step-4-other-statistics" class="section level3">
 <h3>Step 4: Other statistics</h3>
@@ -410,6 +513,11 @@ resolves clonal populations. Nat Biotechnol 40, 1030–1034 (2022). <a href="htt
 <p>[2] Cable, Dylan M., et al. “Robust decomposition of cell type
 mixtures in spatial transcriptomics.” Nature Biotechnology 40.4 (2022):
 517-526.</p>
+<p>[3] Rodrigo A. Gier, Raúl A.
+Reyes Hueros, Jiazhen Rong, Maureen DeMarshall, Tatiana
+A.Karakasheva, Amanda B. Muir, Gary W. Falk, Nancy R. Zhang, Sydney
+M. Shaffer. “Clonal cell states link Barrett’s esophagus and esophageal
+adenocarcinoma.” bioRxiv 2023.01.26.525564; doi: <a href="https://doi.org/10.1101/2023.01.26.525564" class="uri">https://doi.org/10.1101/2023.01.26.525564</a></p>
 </div>
 
 
