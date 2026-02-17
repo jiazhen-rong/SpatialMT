@@ -2,7 +2,7 @@
 % Please edit documentation in R/Visualization.R
 \name{plot_lineage_significance}
 \alias{plot_lineage_significance}
-\title{Plot variant-by-celltype significance as grouped bars}
+\title{Plot global variant-by-celltype significance as grouped bars}
 \usage{
 plot_lineage_significance(
   res,

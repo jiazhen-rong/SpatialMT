@@ -1,8 +1,13 @@
 ---
-title: "Tutorial of SUMMIT on Barrett's Esopaugus Example"
+title: "Tutorial of SUMMIT on Barrett's Esophagus Example"
 author: "Jiazhen Rong, Sydney Bracht"
 date: "2026-02-17"
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T)
+#knitr::opts_knit$set(root.dir = "~/Documents/GitHub/SpatialMT/")
+```
 
 ### Step 1: Load example data
 
@@ -18,7 +23,7 @@ To prepare your own data as SUMMIT input format:
 
 First let's load relevant packages and functions. The **210215_FunctionsGeneral.R** is a utility function of MAESTER [1] to load the pre-processed variant count matrix.
 
-```
+```{r STEP1_lib, eval=F}
 library(SpatialMT)
 library(grid)
 library(gridExtra)
@@ -33,7 +38,7 @@ source("utility_prev_literature/210215_FunctionsGeneral.R") # from MAESTER paper
 
 Load the Spatial Transcriptomics (ST) data:
 
-```
+```{r STEP1_load_ST_data, eval=F}
 # load Spatial Transcriptomics/Curio Seeker data
 seu <-readRDS("example_data/a200_s6_final.rds")
 # obtain spatial coordinates
@@ -42,7 +47,7 @@ spatial_coords = seu@reductions$SPATIAL@cell.embeddings
 
 Load the mtDNA data of alternative allele count matrix and coverage matrix from MAESTER, and variant of interest:
 
-```
+```{r STEP1_load_MT_data, eval=F}
 # load MT data
 maegatk.rse = readRDS("example_data//maegatk_mr1.rds")
 # all possible mitochodnrial mutations' (4* 16K) x spot' VAF
@@ -67,7 +72,7 @@ Load decomposed cell type ratio from tools like RCTD:
 
 -   For this sample, we used the [Barrett's Esaphugus scRNA-Seq atlas](https://www.biorxiv.org/content/10.1101/2023.01.26.525564v2) [3] as the reference dataset for cell type decomposition. For your own dataset, public atlas of the same disease type could be used to obtain cell type ratio matrix ***W***.
 
-```
+```{r STEP1_load_celltype_ratio, eval=F}
 # Load RCTD ratio
 rctd_ratio_major = readRDS("example_data//RCTD_res.rds")
 # normalize the celltype weights to sum to 1 in each spot
@@ -93,8 +98,7 @@ That is, if the read comes from cell type $k$ (with probability $W_{sk}$), then 
 
 $$X_{sj}∼(1-W_{sk} \pi_{kj} )Binomial(\theta_{0j} )+ W_{sk} \pi_{kj} Binomial(\theta_1j)$$
 
-We take the expectation of both sides of the above, and rearrange to get: 
-$$E[\frac{X_{sj}}{N_{sj}} ]=\theta_{0kj} + \pi_{kj}(\theta_{1j} - \theta_{0j} ) W_{sk} (2)$$.
+We take the expectation of both sides of the above, and rearrange to get: $$E[\frac{X_{sj}}{N_{sj}} ]=\theta_{0kj} + \pi_{kj}(\theta_{1j} - \theta_{0j} ) W_{sk} (2)$$.
 
 We make the reasonable assumption that $\theta_{1j} > \theta_{0j}$, that is, the expected carrier VAF is strictly greater than the background VAF, then our null hypothesis (1) is equivalent to the slope $\pi_{kj}(\theta_{1j}-\theta_{0j} )=0$ in the above linear model. We can estimate this slope through a (weighted) linear regression of the observed VAFs $\frac{X_{sj}}{N_{sj}}$ on $W_{sk}$, weighted by coverage $N_{sj}$. We say that variant $j$ is significantly co-enriched with cell type $k$ if the slope in this regression is significantly positive, i.e. p-value less than a preset threshold and positive estimated value. We performed this regression test for each detected mitochondrial variant, after quality filtering, and controlled the FDR at 0.05 through Benjamini Hochberg procedure.
 
@@ -104,7 +108,8 @@ The global celltype test could be performed with function `celltype_test`:
 
 The raw p-values are adjusted for multiple hypothesis testing (#variants x #celltypes), by specifying the `method="FDR"` parameter. - We also have permutation based (default 1000 permutations, with p-val at 0.001 resolution), coverage-weighted linear regression, by setting `test_type = "weighted"`.
 
-```
+```{r STEP2_test, eval=F}
+# To save results
 save_path = paste0("example_data/results")
 dir.create(save_path)
 
@@ -118,18 +123,17 @@ res_lg = celltype_test(celltypes = celltypes,voi=voi,N=as.matrix(N),
 
 To perform paired power analysis:
 
-```
+```{r STEP2_beta, eval=F}
 beta_list = power_analysis_all(voi=voi,celltypes = celltypes,Ws=Ws,
                                N=N,vaf=af.dm,X=NULL,
                                sample_num=100,alpha=0.05,n_sim=10,
                                beta_threshold =0.5,plot=T,save_path = save_path)
 ```
 
-We can visualize such global significance results as in our paper in specified celltypes.
-- `celltypes` could be set to be subtypes and only showing subtypes.
-- `celltype_colors` allows customization of coloring.
+We can visualize such global significance results as in our paper in specified celltypes. - `celltypes` could be set to be subtypes and only showing subtypes. - `celltype_colors` allows customization of coloring.
 
-```
+```{r STEP2_result_visualization, include=T,eval=F}
+# Visualize significance
 celltype_colors = c("BE" = "#E00A82","SQ" = "#ea6860","IM" = "#538e8e","FB" = "#8bc3c3","VC" = "#a2b7d7")
 celltypes = c("BE" ,"SQ" ,"IM","FB","VC")
 p<- plot_lineage_significance(
@@ -144,14 +148,34 @@ p<- plot_lineage_significance(
 # Visualize the result
 print(p)
 ```
-![global significance plot]("example_data/results/lineage_significance_allcelltype.png")
 
+\#![global significance plot](example_data/results/lineage_significance_allcelltype.png)
+
+Visualizing the detection power at different fitted coefficient:
+
+```{r STEP2_result_visualization_power, include=T,eval=F}
+celltype_pattern = paste(celltypes,collapse = "|")
+effect_sizes = seq(0.1, 1, by = 0.2)
+plot_power_curves(
+  beta_list = beta_list,
+  effect_sizes = effect_sizes,
+  celltype_pattern=celltype_patterns,
+  desired_order = c("3054_G>C","3071_T>C","15777_G>C"),
+  save_pdf = TRUE,
+  save_path = save_path,
+  file_name = "Power_curve.pdf",
+  return_plot=T
+)
+print(p2)
+```
+![Power Curve](example_data/results/power_curve.png)
 
 ### Step 3: Localized Cell Type Test
 
 The localized celltype test could be performed with fucntion `celltype_test_knn`:
 
 -   The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
+-   `exclude_plot_idx` is an important parameter. We want to pair the local test with a group of control cells,, but the spots with too high proportion of cell type of interest (such as tumor/diseased cells) shall be excluded. 
 
 ```{r STEP3, eval=F}
 # load data (X - alternate allele counts, N - total counts, Ws - celltype)

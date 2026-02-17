@@ -75,3 +75,19 @@ p<-plot_lineage_significance(
 png("example_data/results/lineage_significance_allcelltype.png",width=1000,height=800)
 print(p)
 dev.off()
+
+celltype_pattern = paste(celltypes,collapse = "|")
+effect_sizes = seq(0.1, 1, by = 0.2)
+plot_power_curves(
+  beta_list = beta_list,
+  effect_sizes = effect_sizes,
+  celltype_pattern=celltype_patterns,
+  desired_order = c("3054_G>C","3071_T>C","15777_G>C"),
+  save_pdf = TRUE,
+  save_path = save_path,
+  file_name = "Power_curve.pdf",
+  return_plot=T
+)
+png("example_data/results/power_curve.png",width=1000,height=800)
+print(p2)
+dev.off()
