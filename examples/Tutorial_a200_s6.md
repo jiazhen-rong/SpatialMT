@@ -1,13 +1,12 @@
 ---
-title: "Tutorial of SUMMIT on Barrett's Esaphugus example"
+title: "Tutorial of SUMMIT on Barrett's Esopaugus Example"
 author: "Jiazhen Rong, Sydney Bracht"
-date: "2025-09-15"
-output: html_document
+date: "2026-02-17"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = T)
-#knitr::opts_knit$set(root.dir = "~/Documents/GitHub/scmtVT/")
+#knitr::opts_knit$set(root.dir = "~/Documents/GitHub/SpatialMT/")
 ```
 
 ### Step 1: Load example data
@@ -83,19 +82,31 @@ Ws = rctd_ratio_major[colnames(af.dm),]
 celltypes= colnames(Ws)
 ```
 
-### Step 2: Global Cell Type Test
+### Step 2: Global Cell Type Test for Association of Variant with Cell Type
 
-```{r model_overview_global, include=FALSE, eval=F}
-### Step 0: Model Explanation (TODO)
-# include model structure here
-# insert model pictures
-# add math descriptions
-```
+#### Model Explaination
 
-The global celltype test could be performed with fucntion `celltype_test`:
+We describe here the model underlying the statistical test that cell type $k$ is co-enriched with variant $j$. Co-enrichment means that we expect a proportion of cells from cell type $k$ to be carriers for the variant $j$.
 
-The raw p-values are adjusted for multiple hypothesis testing (#variants x #celltypes), by specifying the `method="FDR"` parameter.
--   We also have permutation based (default 1000 permutations, with p-val at 0.001 resolution), coverage-weighted linear regression, by setting ```test_type = "weighted"```.
+For variant $j$, let $\theta_{0j}$ represent its background VAF, that is, the probability of a read carrying the alternative allele of the variant within a spot that does not carry it. Background VAF quantifies the false positive rate of calling a variant. Let $\theta_{1j}$ represent the expected VAF within carrier cells, that is, the heteroplasy proportion.
+
+For celltype $k \in \{1,2, … , K\}$, we let $\pi_{jk}$ be the proportion of cells within the cell type that carry variant $j$. Our null hypothesis is thus: $$H_{0k}: \pi_{jk} = 0 (1)$$ versus the alternative that $\pi_{jk} > 0$.
+
+Within spot $s$, let $W_{sk}$ be the proportion of cell type $k$ estimated via deconvolution. We start by defining latent variable $Z_{sij}$, the allele on read $i$ mapping to spot $s$ for variant $j$. $Z_{sij}$ is unobserved in our data, but has the distribution: $$Z_{isj} \sim (1- W_{sk}) Bernouli(\theta_0j )+ W_{sk} (1-\pi_{kj} )Bernouli(\theta_0j )+ W_{sk}\pi_{kj} Bernouli(\theta_{1j})$$ $$=(1-W_{sk}\pi_{kj} )Bernouli(\theta_{0j} ) + W_{sk} \pi_{kj}  Bernouli(\theta_{1j})$$.
+
+That is, if the read comes from cell type $k$ (with probability $W_{sk}$), then it has probability $\pi_{jk}$ of being a carrier of the variant. If it were the carrier of the variant, then it has probability $\theta_{1j}$ of containing the alternative allele. If we assume, for the purpose of this hypothesis test, that cell type $k$ is the only possible carrier cell type, then in all other cases read i would carry the alternative allele with background probability $\theta_{0j}$. Summing up the reads that map to spot s, we have the distribution for X_sj, alternative allele counts in spot s:
+
+$$X_{sj}∼(1-W_{sk} \pi_{kj} )Binomial(\theta_{0j} )+ W_{sk} \pi_{kj} Binomial(\theta_1j)$$
+
+We take the expectation of both sides of the above, and rearrange to get: $$E[\frac{X_{sj}}{N_{sj}} ]=\theta_{0kj} + \pi_{kj}(\theta_{1j} - \theta_{0j} ) W_{sk} (2)$$.
+
+We make the reasonable assumption that $\theta_{1j} > \theta_{0j}$, that is, the expected carrier VAF is strictly greater than the background VAF, then our null hypothesis (1) is equivalent to the slope $\pi_{kj}(\theta_{1j}-\theta_{0j} )=0$ in the above linear model. We can estimate this slope through a (weighted) linear regression of the observed VAFs $\frac{X_{sj}}{N_{sj}}$ on $W_{sk}$, weighted by coverage $N_{sj}$. We say that variant $j$ is significantly co-enriched with cell type $k$ if the slope in this regression is significantly positive, i.e. p-value less than a preset threshold and positive estimated value. We performed this regression test for each detected mitochondrial variant, after quality filtering, and controlled the FDR at 0.05 through Benjamini Hochberg procedure.
+
+#### Code
+
+The global celltype test could be performed with function `celltype_test`:
+
+The raw p-values are adjusted for multiple hypothesis testing (#variants x #celltypes), by specifying the `method="FDR"` parameter. - We also have permutation based (default 1000 permutations, with p-val at 0.001 resolution), coverage-weighted linear regression, by setting `test_type = "weighted"`.
 
 ```{r STEP2_test, eval=F}
 # To save results
@@ -103,14 +114,15 @@ save_path = paste0("example_data/results")
 dir.create(save_path)
 
 # global celltype test
-res_lg = celltype_test(celltypes = celltypes,voi=voi,N=N,
-                       vaf=af.dm,Ws=Ws,spatial_coords = spatial_coords,
+res_lg = celltype_test(celltypes = celltypes,voi=voi,N=as.matrix(N),
+                       vaf=as.matrix(af.dm), Ws=Ws, spatial_coords = spatial_coords,
                        test_type = "linear",plot=T,
                        save_path=save_path,method="FDR",
                        figure_height = 15, figure_width = 15)
 ```
 
 To perform paired power analysis:
+
 ```{r STEP2_beta, eval=F}
 beta_list = power_analysis_all(voi=voi,celltypes = celltypes,Ws=Ws,
                                N=N,vaf=af.dm,X=NULL,
@@ -118,17 +130,34 @@ beta_list = power_analysis_all(voi=voi,celltypes = celltypes,Ws=Ws,
                                beta_threshold =0.5,plot=T,save_path = save_path)
 ```
 
+We can visualize such global significance results as in our paper in specified celltypes.
+- `celltypes` could be set to be subtypes and only showing subtypes.
+- `celltype_colors` allows customization of coloring.
 
 ```{r STEP2_result_visualization, include=F,eval=F}
-# We can visualize such results as in our paper in specified celltypes (TODO):
-#  visualize bars in specified celltypes
+celltype_colors = c("BE" = "#E00A82","SQ" = "#ea6860","IM" = "#538e8e","FB" = "#8bc3c3","VC" = "#a2b7d7")
+celltypes = c("BE" ,"SQ" ,"IM","FB","VC")
+p<- plot_lineage_significance(
+  res = res_lg,
+  celltypes=celltypes,
+  fill_values=celltype_colors,
+  order_by = "BE",
+  title="Global Cell Type Test",
+  outfile = file.path(save_path, "lineage_significance_allcelltype.pdf"),
+  return_plot=T
+)
+# Visualize the result
+print(p)
 ```
+![global significance plot](example_data/results/lineage_significance_allcelltypes.png)
+
 
 ### Step 3: Localized Cell Type Test
 
 The localized celltype test could be performed with fucntion `celltype_test_knn`:
 
-- The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
+-   The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
+
 ```{r STEP3, eval=F}
 # load data (X - alternate allele counts, N - total counts, Ws - celltype)
 common_cells <- intersect(intersect(colnames(N), rownames(Ws)), 

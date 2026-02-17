@@ -11,9 +11,9 @@
 
 <meta name="author" content="Jiazhen Rong, Sydney Bracht" />
 
-<meta name="date" content="2025-09-15" />
+<meta name="date" content="2026-02-17" />
 
-<title>Tutorial of SUMMIT on Barrett’s Esaphugus example</title>
+<title>Tutorial of SUMMIT on Barrett’s Esopaugus Example</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -356,14 +356,15 @@ pre code {
 
 
 
-<h1 class="title toc-ignore">Tutorial of SUMMIT on Barrett’s Esaphugus
-example</h1>
+<h1 class="title toc-ignore">Tutorial of SUMMIT on Barrett’s Esopaugus
+Example</h1>
 <h4 class="author">Jiazhen Rong, Sydney Bracht</h4>
-<h4 class="date">2025-09-15</h4>
+<h4 class="date">2026-02-17</h4>
 
 </div>
 
 
+<p><code>{r setup, include=FALSE} knitr::opts_chunk$set(echo = T) #knitr::opts_knit$set(root.dir = &quot;~/Documents/GitHub/SpatialMT/&quot;)</code></p>
 <div id="step-1-load-example-data" class="section level3">
 <h3>Step 1: Load example data</h3>
 <p>In this step, we want to load data required for
@@ -389,82 +390,138 @@ decomposition.</p></li>
 <p>First let’s load relevant packages and functions. The
 <strong>210215_FunctionsGeneral.R</strong> is a utility function of
 MAESTER [1] to load the pre-processed variant count matrix.</p>
-<pre class="r"><code>library(SpatialMT)
-library(grid)
-library(gridExtra)
-library(spacexr) # RCTD
-library(dplyr)
-library(ggplot2)
-library(Seurat)
+<p>```{r STEP1_lib, eval=F} library(SpatialMT) library(grid)
+library(gridExtra) library(spacexr) # RCTD library(dplyr)
+library(ggplot2) library(Seurat)</p>
+<p>setwd(“~/Documents/GitHub/SpatialMT/examples/”)
+source(“utility_prev_literature/210215_FunctionsGeneral.R”) # from
+MAESTER paper</p>
+<pre><code>
+Load the Spatial Transcriptomics (ST) data:
 
-setwd(&quot;~/Documents/GitHub/SpatialMT/examples/&quot;)
-source(&quot;utility_prev_literature/210215_FunctionsGeneral.R&quot;) # from MAESTER paper</code></pre>
-<p>Load the Spatial Transcriptomics (ST) data:</p>
-<pre class="r"><code># load Spatial Transcriptomics/Curio Seeker data
+```{r STEP1_load_ST_data, eval=F}
+# load Spatial Transcriptomics/Curio Seeker data
 seu &lt;-readRDS(&quot;example_data/a200_s6_final.rds&quot;)
 # obtain spatial coordinates
 spatial_coords = seu@reductions$SPATIAL@cell.embeddings</code></pre>
 <p>Load the mtDNA data of alternative allele count matrix and coverage
 matrix from MAESTER, and variant of interest:</p>
-<pre class="r"><code># load MT data
-maegatk.rse = readRDS(&quot;example_data//maegatk_mr1.rds&quot;)
-# all possible mitochodnrial mutations&#39; (4* 16K) x spot&#39; VAF
-af.dm &lt;- data.matrix(computeAFMutMatrix(maegatk.rse)) # 0-1 VAF scale
-# prepare coverage N, # spot x each chrM location&#39;s (16K) coverage
-counts=as.matrix(maegatk.rse @assays@data$coverage)
-rownames(counts) = 1:nrow(counts);
-colnames(counts) = maegatk.rse @colData@rownames
-N=as(as.matrix(counts[sapply(strsplit(rownames(af.dm),&quot;_&quot;),&quot;[[&quot;,1),]), &quot;sparseMatrix&quot;)
-rownames(N) &lt;- rownames(af.dm)
+<p>```{r STEP1_load_MT_data, eval=F} # load MT data maegatk.rse =
+readRDS(“example_data//maegatk_mr1.rds”) # all possible mitochodnrial
+mutations’ (4* 16K) x spot’ VAF af.dm &lt;-
+data.matrix(computeAFMutMatrix(maegatk.rse)) # 0-1 VAF scale # prepare
+coverage N, # spot x each chrM location’s (16K) coverage
+counts=as.matrix(maegatk.rse <span class="citation">@assays</span><span class="citation">@data$coverage</span>) rownames(counts) =
+1:nrow(counts); colnames(counts) = maegatk.rse <span class="citation">@colData</span><span class="citation">@rownames</span>
+N=as(as.matrix(counts[sapply(strsplit(rownames(af.dm),“_“),”[[“,1),]),
+“sparseMatrix”) rownames(N) &lt;- rownames(af.dm)</p>
+</div>
+<div id="load-variant-of-interest" class="section level1">
+<h1>load variant of interest</h1>
+<p>voi = c(“3054_G&gt;C”,“15777_G&gt;C”,“3071_T&gt;C”)</p>
+</div>
+<div id="subset-to-matrix-to-be-much-smaller-sizes" class="section level1">
+<h1>subset to matrix to be much smaller sizes</h1>
+<p>af.dm=af.dm[voi,] N = N[voi,] N = N[,colnames(af.dm)]</p>
+<pre><code>
+Load decomposed cell type ratio from tools like RCTD:
 
-# load variant of interest
-voi =  c(&quot;3054_G&gt;C&quot;,&quot;15777_G&gt;C&quot;,&quot;3071_T&gt;C&quot;)
+-   For this sample, we used the [Barrett&#39;s Esaphugus scRNA-Seq atlas](https://www.biorxiv.org/content/10.1101/2023.01.26.525564v2) [3] as the reference dataset for cell type decomposition. For your own dataset, public atlas of the same disease type could be used to obtain cell type ratio matrix ***W***.
 
-# subset to matrix to be much smaller sizes
-af.dm=af.dm[voi,]
-N = N[voi,]
-N = N[,colnames(af.dm)]</code></pre>
-<p>Load decomposed cell type ratio from tools like RCTD:</p>
-<ul>
-<li>For this sample, we used the <a href="https://www.biorxiv.org/content/10.1101/2023.01.26.525564v2">Barrett’s
-Esaphugus scRNA-Seq atlas</a> [3] as the reference dataset for cell type
-decomposition. For your own dataset, public atlas of the same disease
-type could be used to obtain cell type ratio matrix
-<strong><em>W</em></strong>.</li>
-</ul>
-<pre class="r"><code># Load RCTD ratio
+```{r STEP1_load_celltype_ratio, eval=F}
+# Load RCTD ratio
 rctd_ratio_major = readRDS(&quot;example_data//RCTD_res.rds&quot;)
 # normalize the celltype weights to sum to 1 in each spot
 rctd_ratio_major = as.data.frame(as.matrix(normalize_weights(rctd_ratio_major@results$weights))) 
 rownames(rctd_ratio_major) = paste0(rownames(rctd_ratio_major),&quot;-1&quot;)
 Ws = rctd_ratio_major[colnames(af.dm),]
 celltypes= colnames(Ws)</code></pre>
+<div id="step-2-global-cell-type-test-for-association-of-variant-with-cell-type" class="section level3">
+<h3>Step 2: Global Cell Type Test for Association of Variant with Cell
+Type</h3>
+<div id="model-explaination" class="section level4">
+<h4>Model Explaination</h4>
+<p>We describe here the model underlying the statistical test that cell
+type <span class="math inline">\(k\)</span> is co-enriched with variant
+<span class="math inline">\(j\)</span>. Co-enrichment means that we
+expect a proportion of cells from cell type <span class="math inline">\(k\)</span> to be carriers for the variant <span class="math inline">\(j\)</span>.</p>
+<p>For variant <span class="math inline">\(j\)</span>, let <span class="math inline">\(\theta_{0j}\)</span> represent its background VAF,
+that is, the probability of a read carrying the alternative allele of
+the variant within a spot that does not carry it. Background VAF
+quantifies the false positive rate of calling a variant. Let <span class="math inline">\(\theta_{1j}\)</span> represent the expected VAF
+within carrier cells, that is, the heteroplasy proportion.</p>
+<p>For celltype <span class="math inline">\(k \in \{1,2, … ,
+K\}\)</span>, we let <span class="math inline">\(\pi_{jk}\)</span> be
+the proportion of cells within the cell type that carry variant <span class="math inline">\(j\)</span>. Our null hypothesis is thus: <span class="math display">\[H_{0k}: \pi_{jk} = 0 (1)\]</span> versus the
+alternative that <span class="math inline">\(\pi_{jk} &gt;
+0\)</span>.</p>
+<p>Within spot <span class="math inline">\(s\)</span>, let <span class="math inline">\(W_{sk}\)</span> be the proportion of cell type
+<span class="math inline">\(k\)</span> estimated via deconvolution. We
+start by defining latent variable <span class="math inline">\(Z_{sij}\)</span>, the allele on read <span class="math inline">\(i\)</span> mapping to spot <span class="math inline">\(s\)</span> for variant <span class="math inline">\(j\)</span>. <span class="math inline">\(Z_{sij}\)</span> is unobserved in our data, but
+has the distribution: <span class="math display">\[Z_{isj} \sim (1-
+W_{sk}) Bernouli(\theta_0j )+ W_{sk} (1-\pi_{kj} )Bernouli(\theta_0j )+
+W_{sk}\pi_{kj} Bernouli(\theta_{1j})\]</span> <span class="math display">\[=(1-W_{sk}\pi_{kj} )Bernouli(\theta_{0j} ) +
+W_{sk} \pi_{kj}  Bernouli(\theta_{1j})\]</span>.</p>
+<p>That is, if the read comes from cell type <span class="math inline">\(k\)</span> (with probability <span class="math inline">\(W_{sk}\)</span>), then it has probability <span class="math inline">\(\pi_{jk}\)</span> of being a carrier of the
+variant. If it were the carrier of the variant, then it has probability
+<span class="math inline">\(\theta_{1j}\)</span> of containing the
+alternative allele. If we assume, for the purpose of this hypothesis
+test, that cell type <span class="math inline">\(k\)</span> is the only
+possible carrier cell type, then in all other cases read i would carry
+the alternative allele with background probability <span class="math inline">\(\theta_{0j}\)</span>. Summing up the reads that
+map to spot s, we have the distribution for X_sj, alternative allele
+counts in spot s:</p>
+<p><span class="math display">\[X_{sj}∼(1-W_{sk} \pi_{kj}
+)Binomial(\theta_{0j} )+ W_{sk} \pi_{kj}
+Binomial(\theta_1j)\]</span></p>
+<p>We take the expectation of both sides of the above, and rearrange to
+get: <span class="math display">\[E[\frac{X_{sj}}{N_{sj}} ]=\theta_{0kj}
++ \pi_{kj}(\theta_{1j} - \theta_{0j} ) W_{sk} (2)\]</span>.</p>
+<p>We make the reasonable assumption that <span class="math inline">\(\theta_{1j} &gt; \theta_{0j}\)</span>, that is,
+the expected carrier VAF is strictly greater than the background VAF,
+then our null hypothesis (1) is equivalent to the slope <span class="math inline">\(\pi_{kj}(\theta_{1j}-\theta_{0j} )=0\)</span> in
+the above linear model. We can estimate this slope through a (weighted)
+linear regression of the observed VAFs <span class="math inline">\(\frac{X_{sj}}{N_{sj}}\)</span> on <span class="math inline">\(W_{sk}\)</span>, weighted by coverage <span class="math inline">\(N_{sj}\)</span>. We say that variant <span class="math inline">\(j\)</span> is significantly co-enriched with cell
+type <span class="math inline">\(k\)</span> if the slope in this
+regression is significantly positive, i.e. p-value less than a preset
+threshold and positive estimated value. We performed this regression
+test for each detected mitochondrial variant, after quality filtering,
+and controlled the FDR at 0.05 through Benjamini Hochberg procedure.</p>
 </div>
-<div id="step-2-global-cell-type-test" class="section level3">
-<h3>Step 2: Global Cell Type Test</h3>
-<p>The global celltype test could be performed with fucntion
+<div id="code" class="section level4">
+<h4>Code</h4>
+<p>The global celltype test could be performed with function
 <code>celltype_test</code>:</p>
 <p>The raw p-values are adjusted for multiple hypothesis testing
 (#variants x #celltypes), by specifying the <code>method=&quot;FDR&quot;</code>
 parameter. - We also have permutation based (default 1000 permutations,
 with p-val at 0.001 resolution), coverage-weighted linear regression, by
 setting <code>test_type = &quot;weighted&quot;</code>.</p>
-<pre class="r"><code># To save results
-save_path = paste0(&quot;example_data/results&quot;)
-dir.create(save_path)
+<p>```{r STEP2_test, eval=F} # To save results save_path =
+paste0(“example_data/results”) dir.create(save_path)</p>
+</div>
+</div>
+</div>
+<div id="global-celltype-test" class="section level1">
+<h1>global celltype test</h1>
+<p>res_lg = celltype_test(celltypes = celltypes,voi=voi,N=as.matrix(N),
+vaf=as.matrix(af.dm), Ws=Ws, spatial_coords = spatial_coords, test_type
+= “linear”,plot=T, save_path=save_path,method=“FDR”, figure_height = 15,
+figure_width = 15)</p>
+<pre><code>
+To perform paired power analysis:
 
-# global celltype test
-res_lg = celltype_test(celltypes = celltypes,voi=voi,N=N,
-                       vaf=af.dm,Ws=Ws,spatial_coords = spatial_coords,
-                       test_type = &quot;linear&quot;,plot=T,
-                       save_path=save_path,method=&quot;FDR&quot;,
-                       figure_height = 15, figure_width = 15)</code></pre>
-<p>To perform paired power analysis:</p>
-<pre class="r"><code>beta_list = power_analysis_all(voi=voi,celltypes = celltypes,Ws=Ws,
+```{r STEP2_beta, eval=F}
+beta_list = power_analysis_all(voi=voi,celltypes = celltypes,Ws=Ws,
                                N=N,vaf=af.dm,X=NULL,
                                sample_num=100,alpha=0.05,n_sim=10,
                                beta_threshold =0.5,plot=T,save_path = save_path)</code></pre>
-</div>
+<p>We can visualize such global significance results as in our paper in
+specified celltypes. - <code>celltypes</code> could be set to be
+subtypes and only showing subtypes. - <code>celltype_colors</code>
+allows customization of coloring.</p>
+<p><code>{r STEP2_result_visualization, include=F,eval=F} celltype_colors = c(&quot;BE&quot; = &quot;#E00A82&quot;,&quot;SQ&quot; = &quot;#ea6860&quot;,&quot;IM&quot; = &quot;#538e8e&quot;,&quot;FB&quot; = &quot;#8bc3c3&quot;,&quot;VC&quot; = &quot;#a2b7d7&quot;) celltypes = c(&quot;BE&quot; ,&quot;SQ&quot; ,&quot;IM&quot;,&quot;FB&quot;,&quot;VC&quot;) p&lt;- plot_lineage_significance(   res = res_lg,   celltypes=celltypes,   fill_values=celltype_colors,   order_by = &quot;BE&quot;,   title=&quot;Global Cell Type Test&quot;,   outfile = file.path(save_path, &quot;lineage_significance_allcelltype.pdf&quot;),   return_plot=T ) # Visualize the result print(p)</code>
+<img src="example_data/results/lineage_significance_allcelltypes.png" alt="global significance plot" /></p>
 <div id="step-3-localized-cell-type-test" class="section level3">
 <h3>Step 3: Localized Cell Type Test</h3>
 <p>The localized celltype test could be performed with fucntion
@@ -473,37 +530,30 @@ res_lg = celltype_test(celltypes = celltypes,voi=voi,N=N,
 <li>The spot-level p-values could be adjusted by FDR for multiple
 hypothesis corrections.</li>
 </ul>
-<pre class="r"><code># load data (X - alternate allele counts, N - total counts, Ws - celltype)
-common_cells &lt;- intersect(intersect(colnames(N), rownames(Ws)), 
-                          rownames(spatial_coords))
-Ws = Ws[common_cells,]
-spatial_coords=spatial_coords[common_cells,]
-
-exclude_plot_idx = rownames(Ws)[Ws$BE &lt; 0.25]
-
-pdf(paste0(save_path,&quot;/spot_level_significance.pdf&quot;),width=15,height=15)
-for(var in voi){
-  print(var)
-  sample_idx = intersect(rownames(Ws)[(Ws$BE &lt; 0.25)],
-                         colnames(N)[N[var,] &gt; 1])
-  result_var=celltype_test_knn(celltypes,vars=c(var),
-                               N_voi=N[var,,drop=F],vaf=af.dm[var,,drop=F],
-                               Ws,spatial_coords,
-                               test_type=&quot;linear&quot;,k_neighbors=100,
-                               method=&quot;Raw&quot;,sample_idx=sample_idx,disease_celltype = &quot;BE&quot;,
-                               ratio_threshold=0.02,exclude_plot_idx = exclude_plot_idx,
-                               vaf_cellprop = F,coef_plot_option = &quot;negative&quot;)
-  saveRDS(result_var,paste0(save_path,&quot;/&quot;,var,&quot;_spot_test.rds&quot;))
-  print(result_var$combined_plot)
-}
-dev.off()</code></pre>
-</div>
-<div id="step-4-other-statistics" class="section level3">
-<h3>Step 4: Other statistics</h3>
-<pre class="r"><code>### Step 0: Model Explanation (TODO)
+<p>```{r STEP3, eval=F} # load data (X - alternate allele counts, N -
+total counts, Ws - celltype) common_cells &lt;-
+intersect(intersect(colnames(N), rownames(Ws)),
+rownames(spatial_coords)) Ws = Ws[common_cells,]
+spatial_coords=spatial_coords[common_cells,]</p>
+<p>exclude_plot_idx = rownames(Ws)[Ws$BE &lt; 0.25]</p>
+<p>pdf(paste0(save_path,“/spot_level_significance.pdf”),width=15,height=15)
+for(var in voi){ print(var) sample_idx = intersect(rownames(Ws)[(Ws<span class="math inline">\(BE &lt; 0.25)],  colnames(N)[N[var,] &gt;
+1])  result_var=celltype_test_knn(celltypes,vars=c(var),  N_voi=N[var,,drop=F],vaf=af.dm[var,,drop=F],  Ws,spatial_coords,  test_type=&quot;linear&quot;,k_neighbors=100,  method=&quot;Raw&quot;,sample_idx=sample_idx,disease_celltype
+= &quot;BE&quot;,  ratio_threshold=0.02,exclude_plot_idx =
+exclude_plot_idx,  vaf_cellprop = F,coef_plot_option =
+&quot;negative&quot;)  saveRDS(result_var,paste0(save_path,&quot;/&quot;,var,&quot;_spot_test.rds&quot;))  print(result_var\)</span>combined_plot)
+} dev.off()</p>
+<pre><code>
+```{r model_overview_local, include=FALSE, eval=F}
+### Step 0: Model Explanation (TODO)
 # include model structure here
 # insert model pictures
 # include math derivation</code></pre>
+</div>
+<div id="step-4-other-statistics" class="section level3">
+<h3>Step 4: Other statistics</h3>
+<p><code>{r step4,  eval=F} ### Step 0: Model Explanation (TODO) # include model structure here # insert model pictures # include math derivation</code></p>
+<p><code>{r metric_overview_lisi_moran, include=FALSE, eval=F} ### Step 0: Model Explanation (TODO) # include model structure here # insert model pictures # include math derivation</code></p>
 </div>
 <div id="references" class="section level3">
 <h3>References</h3>
@@ -518,6 +568,7 @@ Reyes Hueros, Jiazhen Rong, Maureen DeMarshall, Tatiana
 A.Karakasheva, Amanda B. Muir, Gary W. Falk, Nancy R. Zhang, Sydney
 M. Shaffer. “Clonal cell states link Barrett’s esophagus and esophageal
 adenocarcinoma.” bioRxiv 2023.01.26.525564; doi: <a href="https://doi.org/10.1101/2023.01.26.525564" class="uri">https://doi.org/10.1101/2023.01.26.525564</a></p>
+</div>
 </div>
 
 
