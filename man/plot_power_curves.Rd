@@ -9,7 +9,7 @@ plot_power_curves(
   effect_sizes,
   celltype_pattern = "BE|IM|SQ|FB|VC",
   desired_order = NULL,
-  color_map = NULL,
+  celltype_colors = NULL,
   facet_ncol = NULL,
   title = "Power Analysis",
   save_pdf = FALSE,
@@ -32,6 +32,9 @@ Default matches patterns like "BE|IM|SQ|FB|VC".}
 \item{desired_order}{Optional character vector giving the facet order for lineages.
 If NULL, ordering is whatever appears in the data.}
 
+\item{celltype_colors}{Named character vector mapping celltype -> hex color.
+If NULL, uses the default palette for BE/SQ/IM/FB/VC.}
+
 \item{facet_ncol}{Number of columns in facet_wrap. If NULL, ggplot decides.}
 
 \item{title}{Plot title.}
@@ -45,9 +48,6 @@ If NULL, ordering is whatever appears in the data.}
 \item{width, height}{PDF dimensions in inches.}
 
 \item{return_plot}{Return the plot}
-
-\item{celltype_colors}{Named character vector mapping celltype -> hex color.
-If NULL, uses the default palette for BE/SQ/IM/FB/VC.}
 }
 \value{
 \itemize{

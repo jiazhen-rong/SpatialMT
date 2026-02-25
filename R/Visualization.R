@@ -25,7 +25,7 @@
 #' @param outfile If provided, save a PDF to this path. If NULL, no file is saved.
 #' @param draw_axis_break Logical; if TRUE and \code{logy=TRUE}, draw a small '//' mark to indicate axis break.
 #'
-#' @return A ggplot object 
+#' @return A ggplot object
 #' @import dplyr,tidyr,ggplot2
 #' @export
 plot_lineage_significance <- function(
@@ -45,16 +45,16 @@ plot_lineage_significance <- function(
     return_plot=T,
     title=NULL
 ) {
-  
+
   if(is.null(res$adjusted_pval)){
     stop("No p values detected in the input.")
   }
-  
+
   pval_filter=res_lg$adjusted_pval
   pval_filter[res_lg$coef <0] = 1
   pval_df <- as.data.frame(as.matrix(pval_filter))
   pval_df$Variant <- rownames(pval_filter)
-  
+
   # Long format
   df_long <- pval_df %>%
     tidyr::pivot_longer(
@@ -62,18 +62,18 @@ plot_lineage_significance <- function(
       names_to = "Celltype",
       values_to = "pval"
     )
-  
+
   # Subset celltypes if requested
   if (!is.null(celltypes)) {
     df_long <- df_long %>%
       filter(Celltype %in% celltypes)
   }
-  
+
   # Summarize (kept for safety, but usually already one value each)
   df_summary <- df_long %>%
-    dplyr::group_by(.data$Variant, .data$Celltype) |>
-    dplyr::summarise(logp = -log10(.data$pval), .groups = "drop")
-  
+    dplyr::group_by(.data$Variant, .data$Celltype) %>%
+    dplyr::summarise(pval=.data$pval, logp = -log10(.data$pval), .groups = "drop")
+
   # Order variants by chosen celltype
   if (!is.null(order_by)) {
     if (!(order_by %in% df_summary$Celltype)) {
@@ -83,32 +83,38 @@ plot_lineage_significance <- function(
         dplyr::filter(.data$Celltype == order_by) %>%
         dplyr::arrange(dplyr::desc(.data$logp)) %>%
         dplyr::pull(.data$Variant)
-      
+
       # Keep only variants present
       df_summary$Variant <- factor(df_summary$Variant, levels = unique(ord))
     }
   }
-  
+
   # Consider for zeros for log y-scale plotting
-  if (logy) {
-    df_summary <- df_summary %>%
-      dplyr::mutate(
-        logp_plot = ifelse(.data$logp == 0, zero_floor, .data$logp),
-        is_zero = .data$logp == 0,
-        logp_label = ifelse(is_zero, "0", sprintf("%.2f", logp)),# label 0 as "0", others as "%.2f"
-         signif_label = case_when(
-          logp > 3 ~ "***",
-          logp > 2 ~ "**",
-          logp > -log10(0.05) ~ "*",
-          TRUE ~ ""
-        )
+  #if (logy) {
+  df_summary <- df_summary %>%
+    dplyr::mutate(
+      logp_plot = ifelse(.data$logp == 0, zero_floor, .data$logp),
+      is_zero = .data$logp == 0,
+      logp_label = ifelse(is_zero, "0", sprintf("%.2f", logp)),# label 0 as "0", others as "%.2f"
+       signif_label = case_when(
+        logp > 3 ~ "***",
+        logp > 2 ~ "**",
+        logp > -log10(0.05) ~ "*",
+        TRUE ~ ""
       )
+    )
+  if (logy) {
     y_aes <- ggplot2::aes(y = .data$logp_plot)
-  } else {
-    df_summary$logp_plot <- df_summary$logp
+  }else{
     y_aes <- ggplot2::aes(y = .data$logp)
+    # }
   }
-    
+  #}
+  # } else {
+  #   df_summary$logp_plot <- df_summary$logp
+  #   y_aes <- ggplot2::aes(y = .data$logp)
+  # }
+
   # Build plot
   p <- ggplot(df_summary,aes(x = .data$Variant, fill = .data$Celltype)) +
     geom_bar(
@@ -129,7 +135,7 @@ plot_lineage_significance <- function(
       axis.line.x = element_blank(),
       plot.title = ggplot2::element_text(
         hjust = 0.5,  face = "bold", size = base_size + 2)
-    ) + 
+    ) +
     # significance stars
     geom_text(
       aes(label = signif_label, y = logp_plot + 0.3),
@@ -141,13 +147,13 @@ plot_lineage_significance <- function(
       yintercept = -log10(p_threshold),
       linetype = "dashed",
       color = "black"
-    ) 
-  
+    )
+
   # Fill override
   if (!is.null(fill_values)) {
     p <- p + ggplot2::scale_fill_manual(values = fill_values)
   }
-  
+
   # Log y scale
   if (logy) {
     p <- p + ggplot2::scale_y_log10(
@@ -157,7 +163,7 @@ plot_lineage_significance <- function(
     ) +
       ggplot2::geom_hline(yintercept = 1, color = "black", linewidth = 0.5)
   }
-  
+
   # Save or return
   if (!is.null(outfile)) {
     pdf(outfile, width = width, height = height)
@@ -213,7 +219,7 @@ plot_lineage_significance <- function(
 #' @param width,height PDF dimensions in inches.
 #' @param return_plot Return the plot
 #'
-#' @return 
+#' @return
 #'   - plot: a ggplot object
 #'
 #' @examples
@@ -228,7 +234,7 @@ plot_power_curves <- function(
     effect_sizes,
     celltype_pattern = "BE|IM|SQ|FB|VC",
     desired_order = NULL,
-    color_map = NULL,
+    celltype_colors = NULL,
     facet_ncol = NULL,
     title = "Power Analysis",
     save_pdf = FALSE,
@@ -238,18 +244,18 @@ plot_power_curves <- function(
     height = 5,
     return_plot=T
 ) {
-  
+
   # 1) Select entries by suffix
   suffix_regex <- paste0("(", celltype_pattern, ")$")
   selected_names <- grep(suffix_regex, names(beta_list), value = TRUE)
   if (length(selected_names) == 0) {
     stop("No entries in beta_list matched suffix pattern: ", celltype_pattern)
   }
-  
+
   # 2) Build long data frame
   power_df <- do.call(rbind, lapply(selected_names, function(name) {
     power_values <- beta_list[[name]]
-    
+
     if (!is.numeric(power_values)) {
       stop("beta_list[['", name, "']] is not numeric.")
     }
@@ -259,7 +265,7 @@ plot_power_curves <- function(
     }
     lineage <- sub(paste0("_", suffix_regex), "", name)
     celltype <- sub(paste0("^.*_",suffix_regex), "\\1", name)
-    
+
     data.frame(
       lineage = lineage,
       celltype = celltype,
@@ -268,12 +274,12 @@ plot_power_curves <- function(
       stringsAsFactors = FALSE
     )
   }))
-  
+
   # 3) Optional lineage ordering
   if (!is.null(desired_order)) {
     power_df$lineage <- factor(power_df$lineage, levels = desired_order)
   }
-  
+
   # 4) Plot
   p <- ggplot(power_df, aes(x = effect_size, y = power,
       color = celltype, shape = celltype, linetype = celltype
@@ -281,13 +287,13 @@ plot_power_curves <- function(
   ) +
     geom_line(linewidth = 1.2) +
     geom_point(size = 2) +
-    facet_wrap(~ lineage, ncol = facet_ncol) 
-  
+    facet_wrap(~ lineage, ncol = facet_ncol)
+
     if (is.null(celltype_colors)) {
     } else {
       p <- p + scale_color_manual(values = celltype_colors)
     }
-  
+
     p <- p + labs(
       x = "Effect Size", y = "Power", color = "Cell Type",
       title = title
@@ -313,7 +319,7 @@ plot_power_curves <- function(
       shape = guide_legend(title = "Cell Type"),
       linetype = guide_legend(title = "Cell Type")
     )
-  
+
   if (save_pdf) {
     if (!dir.exists(save_path)) dir.create(save_path, recursive = TRUE)
     out_file <- file.path(save_path, file_name)
@@ -321,7 +327,7 @@ plot_power_curves <- function(
     print(p)
     dev.off()
   }
-    
+
   if(return_plot){
     return(p)
   }

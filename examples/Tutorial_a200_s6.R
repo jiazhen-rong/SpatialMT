@@ -72,6 +72,18 @@ p<-plot_lineage_significance(
   outfile = file.path(save_path, "lineage_significance_allcelltype.pdf"),
   return_plot=T
 )
+non_log_p <- plot_lineage_significance(
+  res = res_lg,
+  celltypes=celltypes,
+  fill_values=celltype_colors,
+  order_by = "BE",
+  title="Global Cell Type Test",
+  outfile = file.path(save_path, "lineage_significance_allcelltype.pdf"),
+  return_plot=T,
+  logy=F
+)
+
+
 png("example_data/results/lineage_significance_allcelltype.png",width=1000,height=800)
 print(p)
 dev.off()

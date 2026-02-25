@@ -168,6 +168,7 @@ plot_power_curves(
 )
 print(p2)
 ```
+
 ![Power Curve](example_data/results/power_curve.png)
 
 ### Step 3: Localized Cell Type Test
@@ -175,7 +176,7 @@ print(p2)
 The localized celltype test could be performed with fucntion `celltype_test_knn`:
 
 -   The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
--   `exclude_plot_idx` is an important parameter. We want to pair the local test with a group of control cells,, but the spots with too high proportion of cell type of interest (such as tumor/diseased cells) shall be excluded. 
+-   `exclude_plot_idx` is an important parameter. We want to pair the local test with a group of control cells,, but the spots with too high proportion of cell type of interest (such as tumor/diseased cells) shall be excluded.
 
 ```{r STEP3, eval=F}
 # load data (X - alternate allele counts, N - total counts, Ws - celltype)
