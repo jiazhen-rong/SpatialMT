@@ -83,6 +83,9 @@ voi =  c("3054_G>C","15777_G>C","3071_T>C")
 af.dm=af.dm[voi,]
 N = N[voi,]
 N = N[,colnames(af.dm)]
+rm(maegatk.rse)
+gc()
+
 ```
 
 Load decomposed cell type ratio from tools like RCTD:
@@ -157,7 +160,7 @@ We can visualize such global significance results as in our paper in specified c
 # Visualize significance
 celltype_colors = c("BE" = "#E00A82","SQ" = "#ea6860","IM" = "#538e8e","FB" = "#8bc3c3","VC" = "#a2b7d7")
 celltypes = c("BE" ,"SQ" ,"IM","FB","VC")
-p <- plot_lineage_significance(
+p <- SpatialMT:::plot_lineage_significance(
   res = res_lg, celltypes=celltypes, fill_values=celltype_colors,
   order_by = "BE", title="Global Cell Type Test",
   outfile = file.path(save_path, "lineage_significance_allcelltype.pdf"), return_plot=T)
@@ -175,7 +178,7 @@ print(p)
 ```{r STEP2_result_visualization_power, include=T,eval=T}
 celltype_pattern = paste(celltypes,collapse = "|")
 effect_sizes = seq(0.1, 1, by = 0.2)
-p2<- plot_power_curves(
+p2<- SpatialMT:::plot_power_curves(
   beta_list = beta_list, effect_sizes = effect_sizes, 
   celltype_pattern=celltype_pattern, celltype_colors = celltype_colors,
   desired_order = c("3054_G>C","3071_T>C","15777_G>C"),
@@ -191,9 +194,11 @@ print(p2)
 
 ### Step 3: Localized Cell Type Test
 
-The localized celltype test could be performed with fucntion `celltype_test_knn`:
+If a variant did not show up to be significantly associated with any celltype, it could be that they are too rare or with low heteroplasmy. However, a lot of rare clones are localized in space, so we have developed the paired localized test, hoping to discover the localized variants missed from global test.
 
-- The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
+The localized celltype test could be performed with fucntion `celltype_test_knn` (~ 3 min to calculate):
+
+ - The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
 ```{r STEP3, eval=F}
 # load data (X - alternate allele counts, N - total counts, Ws - celltype)
 common_cells <- intersect(intersect(colnames(N), rownames(Ws)), 
@@ -221,28 +226,45 @@ for(var in voi){
 dev.off()
 ```
 
-```{r model_overview_local, include=FALSE, eval=F}
-### Step 0: Model Explanation (TODO)
-# include model structure here
-# insert model pictures
-# include math derivation
+The raw p-values were plotted at spot-level and saved as pdf, and can be visualized as the following:
+
+```{r model_local_visual_spot, include=FALSE, eval=F}
+var = "15777_G>C"
+var_spot_res = readRDS(paste0(save_path,"/",var,"_spot_test.rds"))
+print(var_spot_res$combined_plot)
 ```
+
+Or summarized as bar plots, with minimum p-value for each celltype:
+```{r model_local_visual_bars, include=FALSE, eval=F}
+celltype_colors = c("BE" = "#E00A82","SQ" = "#ea6860","IM" = "#538e8e","FB" = "#8bc3c3","VC" = "#a2b7d7")
+celltypes = c("BE" ,"SQ" ,"IM","FB","VC")
+spot_vis <- plot_localized_test(
+  voi = c("15777_G>C"),
+  save_path = "example_data/results/",
+  Ws = Ws,
+  signed = TRUE,
+  celltypes = celltypes,
+  celltype_colors = celltype_colors
+)
+print(spot_vis$plot_all)
+```
+
+
 
 ### Step 4: Other statistics
+We also designed several new metrics, including LISI and MI.
+LISI aims to measure the 
 
-```{r step4,  eval=F}
+```{r step4_metric_lisi_MI,  eval=F}
 ### Step 0: Model Explanation (TODO)
-# include model structure here
-# insert model pictures
-# include math derivation
+P3A2_LISI = pairwise_LISI(voi=voi,N=N,af.dm=af.dm,spatial_coords=spatial_coords,
+                                  coverage_thresh=0,k = 50)
+P3A2_MI = moran_I_knn(voi=voi,N=N,af.dm=af.dm,spatial_coords=spatial_coords,
+                             coverage_thresh=1,k=50,seed=42)
+write.table(P3A6_LISI_self,paste0(save_path,"/LISI_pairwise.txt"))
+write.table(P3A6_LISI_self,paste0(save_path,"/MI_per_var.txt"))
 ```
 
-```{r metric_overview_lisi_moran, include=FALSE, eval=F}
-### Step 0: Model Explanation (TODO)
-# include model structure here
-# insert model pictures
-# include math derivation
-```
 
 ### References
 
