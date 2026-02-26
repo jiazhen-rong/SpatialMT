@@ -14,8 +14,8 @@ knitr::opts_chunk$set(echo = T,message = FALSE, warning = FALSE)
 knitr::opts_knit$set(root.dir = "~/Documents/GitHub/SpatialMT/examples/")
 
 library(SpatialMT)
-library(SummarizedExperiment)  # <-- ADD THIS
-library(SingleCellExperiment)  # often needed too
+library(SummarizedExperiment)  
+library(SingleCellExperiment)  
 library(Matrix)
 library(dplyr)
 library(ggplot2)
@@ -156,7 +156,7 @@ We can visualize such global significance results as in our paper in specified c
  - `celltypes` could be set to be subtypes and the visualization will only show subtypes. 
  - `celltype_colors` allows customization of coloring.
 
-```{r STEP2_result_visualization, include=T,eval=T}
+```{r STEP2_result_visualization, include=T,eval=T,fig.width=10,fig.height=5}
 # Visualize significance
 celltype_colors = c("BE" = "#E00A82","SQ" = "#ea6860","IM" = "#538e8e","FB" = "#8bc3c3","VC" = "#a2b7d7")
 celltypes = c("BE" ,"SQ" ,"IM","FB","VC")
@@ -175,7 +175,7 @@ print(p)
 <img src="example_data/results/lineage_significance_allcelltype.png" width="70%" />
 -->
 
-```{r STEP2_result_visualization_power, include=T,eval=T}
+```{r STEP2_result_visualization_power, include=T,eval=T,fig.width=10,fig.height=5}
 celltype_pattern = paste(celltypes,collapse = "|")
 effect_sizes = seq(0.1, 1, by = 0.2)
 p2<- SpatialMT:::plot_power_curves(
@@ -199,7 +199,7 @@ If a variant did not show up to be significantly associated with any celltype, i
 The localized celltype test could be performed with fucntion `celltype_test_knn` (~ 3 min to calculate):
 
  - The spot-level p-values could be adjusted by FDR for multiple hypothesis corrections.
-```{r STEP3, eval=F}
+```{r STEP3, eval=T}
 # load data (X - alternate allele counts, N - total counts, Ws - celltype)
 common_cells <- intersect(intersect(colnames(N), rownames(Ws)), 
                           rownames(spatial_coords))
@@ -228,14 +228,14 @@ dev.off()
 
 The raw p-values were plotted at spot-level and saved as pdf, and can be visualized as the following:
 
-```{r model_local_visual_spot, include=FALSE, eval=F}
+```{r model_local_visual_spot, include=T, eval=T,fig.width=15,fig.height=15}
 var = "15777_G>C"
 var_spot_res = readRDS(paste0(save_path,"/",var,"_spot_test.rds"))
 print(var_spot_res$combined_plot)
 ```
 
 Or summarized as bar plots, with minimum p-value for each celltype:
-```{r model_local_visual_bars, include=FALSE, eval=F}
+```{r model_local_visual_bars, include=T, eval=T,fig.width=5,fig.height=5}
 celltype_colors = c("BE" = "#E00A82","SQ" = "#ea6860","IM" = "#538e8e","FB" = "#8bc3c3","VC" = "#a2b7d7")
 celltypes = c("BE" ,"SQ" ,"IM","FB","VC")
 spot_vis <- plot_localized_test(
@@ -244,6 +244,7 @@ spot_vis <- plot_localized_test(
   Ws = Ws,
   signed = TRUE,
   celltypes = celltypes,
+  all_ct=celltypes,
   celltype_colors = celltype_colors
 )
 print(spot_vis$plot_all)
@@ -252,17 +253,18 @@ print(spot_vis$plot_all)
 
 
 ### Step 4: Other statistics
-We also designed several new metrics, including LISI and MI.
-LISI aims to measure the 
+We also designed several new metrics, including LISI and MI. 
+ - LISI measures the intermixing of two variants; 1 means fully separated and 2 means fully intermixed. 
+ - Moran's I, which was first proposed for spatially variable DE genes, was calculated to check the coherence of the variances in space.
 
-```{r step4_metric_lisi_MI,  eval=F}
+```{r step4_metric_lisi_MI,  eval=T}
 ### Step 0: Model Explanation (TODO)
-P3A2_LISI = pairwise_LISI(voi=voi,N=N,af.dm=af.dm,spatial_coords=spatial_coords,
+LISI = pairwise_LISI(voi=voi,N=N,af.dm=af.dm,spatial_coords=spatial_coords,
                                   coverage_thresh=0,k = 50)
-P3A2_MI = moran_I_knn(voi=voi,N=N,af.dm=af.dm,spatial_coords=spatial_coords,
+MI = moran_I_knn(voi=voi,N=N,af.dm=af.dm,spatial_coords=spatial_coords,
                              coverage_thresh=1,k=50,seed=42)
-write.table(P3A6_LISI_self,paste0(save_path,"/LISI_pairwise.txt"))
-write.table(P3A6_LISI_self,paste0(save_path,"/MI_per_var.txt"))
+write.table(LISI,paste0(save_path,"/LISI_pairwise.txt"))
+write.table(MI,paste0(save_path,"/MI_per_var.txt"))
 ```
 
 

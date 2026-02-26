@@ -26,7 +26,7 @@
 #' @param draw_axis_break Logical; if TRUE and \code{logy=TRUE}, draw a small '//' mark to indicate axis break.
 #'
 #' @return A ggplot object
-#' @import dplyr,tidyr,ggplot2
+#' @import dplyr tidyr ggplot2
 #' @export
 plot_lineage_significance <- function(
     res,
@@ -227,7 +227,7 @@ plot_lineage_significance <- function(
 #'   desired_order = c("3054_G>C","3071_T>C","15777_G>C"),
 #'   save_pdf = TRUE, save_path = save_path
 #' )
-#' @import dplyr,tidyr,ggplot2
+#' @import dplyr tidyr ggplot2
 #' @export
 plot_power_curves <- function(
     beta_list,
@@ -333,11 +333,59 @@ plot_power_curves <- function(
   }
 }
 
-
+#' Plot Minimum Adjusted Spot p-values per Cell Type for Localized Tests
+#'
+#' Load Reads per-variant spot-level test results,
+#' (\code{<save_path>/<VAR>_spot_test.rds>}), performs per-celltype multiple-testing
+#' correction across spots, summarizes the minimum adjusted p-value per celltype,
+#' and produces a barplot of \eqn{-\log_{10}(p)} for each variant.
+#'
+#' If \code{signed = TRUE}, p-values for spots with negative coefficients are set to 1
+#' (i.e., only positive-direction effects contribute to significance).
+#'
+#' Outputs written to \code{save_path}:
+#' \itemize{
+#'   \item \code{<file_prefix>_celltypes.pdf}: combined plot across variants
+#'   \item \code{<file_prefix>_df_min_p.rds}: aggregated summary data.frame
+#'   \item \code{<file_prefix>_var_spot_list.rds}: per-variant p-values, adjusted p-values, and significant spots
+#' }
+#'
+#' @param voi Character vector of variant IDs. For each variant \code{v}, this
+#'   function expects an RDS file named \code{paste0(v, "_spot_test.rds")} in \code{save_path}.
+#' @param save_path Directory containing the per-variant RDS files and where outputs
+#'   will be written. Created if it does not exist.
+#' @param Ws Numeric matrix/data.frame of cell type weights (spots x celltypes) or similar;
+#'   only its column names are used to define the full set of cell types.
+#' @param celltypes Optional character vector of cell types to include in plotting/summary.
+#'   Default \code{NULL} uses all \code{colnames(Ws)}.
+#' @param signed Logical; if \code{TRUE}, sets p-values to 1 for negative coefficients.
+#'   Default is \code{TRUE}.
+#' @param adjust_method Multiple-testing adjustment method passed to \code{p.adjust}
+#'   (e.g. \code{"BH"}, \code{"bonferroni"}). Default is \code{"BH"}.
+#' @param fdr_thresh FDR threshold used to define significant spots after adjustment.
+#'   Default is 0.05.
+#' @param celltype_colors Optional named character vector mapping celltype -> color.
+#'   If provided, colors are applied via \code{scale_fill_manual}.
+#' @param file_prefix Prefix for output files written to \code{save_path}.
+#'   Default is \code{"spatial_maxlogp"}.
+#' @param width_all,height_all Width and height (in inches) of the saved PDF plot.
+#'
+#' @return A list with:
+#'   \describe{
+#'     \item{df_min_p}{data.frame with min p-values per (variant, celltype) and plotting fields}
+#'     \item{var_spot_list}{nested list storing per-variant p-values, adjusted p-values, and significant spots}
+#'     \item{plot_all}{the combined ggplot/patchwork object saved to PDF}
+#'   }
+#'
+#' @importFrom dplyr %>% mutate case_when filter
+#' @importFrom ggplot2 ggplot aes geom_col scale_y_log10 geom_text geom_hline labs theme_minimal theme element_text element_line element_blank ggsave
+#' @importFrom patchwork wrap_plots plot_annotation
+#' @export
 plot_localized_test <- function(
     voi,
     save_path,
     Ws,
+    all_ct=NULL,
     celltypes = NULL,             # default: all Ws colnames
     signed = TRUE,
     adjust_method = "BH",
@@ -346,14 +394,15 @@ plot_localized_test <- function(
     file_prefix = "spatial_maxlogp",
     width_all = 8, height_all = 4
 ) {
-  library(dplyr); library(ggplot2); library(patchwork)
 
   stopifnot(!is.null(voi), length(voi) > 0)
   stopifnot(!is.null(save_path))
   dir.create(save_path, recursive = TRUE, showWarnings = FALSE)
 
   # Default celltypes
-  all_ct <- colnames(Ws)
+  if(is.null(all_ct)){
+    all_ct <- colnames(Ws)
+  }
   if (is.null(celltypes)) {
     celltypes <- all_ct
   }
